@@ -1,0 +1,13 @@
+.env
+target/
+*.class
+*.jar
+*.war
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.venv/
+chatbot/data/
+*.log
+.DS_Store

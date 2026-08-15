@@ -1,0 +1,113 @@
+# ============================================================
+# docker-compose.yml — Sistema de Gestión Pedagógica
+# Pedagogía en Matemáticas — ISW 2026-2
+# ============================================================
+# Servicios:
+#   - db        : MySQL 8.0
+#   - backend   : Spring Boot 3.3 (puerto 8080)
+#   - frontend  : Next.js 14 (puerto 3000)
+#   - chatbot   : Python FastAPI + LangChain (puerto 8000)
+
+services:
+
+  # ----------------------------------------------------------
+  # Base de Datos MySQL
+  # ----------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: pedagogia_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass2026}
+      MYSQL_DATABASE: pedagogia_db
+      MYSQL_USER: ${DB_USER:-pedagogia_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-pedagogia_pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - pedagogia_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpass2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ----------------------------------------------------------
+  # Backend Spring Boot
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pedagogia_backend
+    restart: unless-stopped
+    environment:
+      DB_USER: ${DB_USER:-pedagogia_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pedagogia_pass}
+      JWT_SECRET: ${JWT_SECRET:-clave-secreta-para-desarrollo-cambiar-en-produccion-2026}
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - pedagogia_net
+
+  # ----------------------------------------------------------
+  # Frontend Next.js
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pedagogia_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api
+      NEXT_PUBLIC_CHATBOT_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - pedagogia_net
+
+  # ----------------------------------------------------------
+  # Chatbot RAG (Python FastAPI + LangChain + Gemini)
+  # ----------------------------------------------------------
+  chatbot:
+    build:
+      context: ./chatbot
+      dockerfile: Dockerfile
+    container_name: pedagogia_chatbot
+    restart: unless-stopped
+    environment:
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-tu-api-key-aqui}
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "8000:8000"
+    volumes:
+      - chatbot_data:/app/data
+    depends_on:
+      - backend
+    networks:
+      - pedagogia_net
+
+# ----------------------------------------------------------
+# Volumes
+# ----------------------------------------------------------
+volumes:
+  db_data:
+    driver: local
+  chatbot_data:
+    driver: local
+
+# ----------------------------------------------------------
+# Networks
+# ----------------------------------------------------------
+networks:
+  pedagogia_net:
+    driver: bridge
