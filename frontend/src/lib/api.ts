@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081/api";
 const CHATBOT_URL = process.env.NEXT_PUBLIC_CHATBOT_URL || "http://localhost:8000";
 
 // Cliente para el backend Spring Boot
