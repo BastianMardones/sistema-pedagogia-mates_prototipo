@@ -1,6 +1,6 @@
 // src/types/index.ts
 
-export type UserRole = "ESTUDIANTE" | "PROFESOR" | "COORDINADOR" | "DIRECTIVO";
+export type UserRole = "ESTUDIANTE" | "PROFESOR" | "COORDINADOR" | "DIRECTIVO" | "ADMIN";
 
 export interface User {
   id: number;
