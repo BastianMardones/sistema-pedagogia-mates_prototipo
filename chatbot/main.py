@@ -33,16 +33,16 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa recursos al arrancar el servidor."""
-    print("🚀 Iniciando chatbot pedagógico...")
+    print("[INFO] Iniciando chatbot pedagogico...")
 
     # Pre-cargar el knowledge base FAISS
     try:
         from app.knowledge_base import load_or_create_knowledge_base
         kb = load_or_create_knowledge_base()
         app.state.knowledge_base = kb
-        print("✅ Knowledge base FAISS inicializado")
+        print("[INFO] Knowledge base FAISS inicializado")
     except Exception as e:
-        print(f"⚠️ Knowledge base no disponible: {e}")
+        print(f"[WARN] Knowledge base no disponible: {e}")
         app.state.knowledge_base = None
 
     # Crear directorios necesarios
@@ -50,9 +50,9 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/sesiones", exist_ok=True)
     os.makedirs("data/voice_notes", exist_ok=True)
 
-    print(f"🎙️ Voice provider: {voice_service.get_provider_name()}")
+    print(f"[INFO] Voice provider: {voice_service.get_provider_name()}")
     yield
-    print("👋 Cerrando chatbot...")
+    print("[INFO] Cerrando chatbot...")
 
 
 app = FastAPI(

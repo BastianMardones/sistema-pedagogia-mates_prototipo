@@ -184,7 +184,7 @@ def create_knowledge_base():
 
     except Exception as e:
         # Si FAISS falla, usar fallback sin vector store
-        print(f"⚠️ No se pudo inicializar FAISS: {e}. Usando modo sin RAG.")
+        print(f"[WARN] No se pudo inicializar FAISS: {e}. Usando modo sin RAG.")
         return None
 
 
@@ -207,6 +207,6 @@ def load_or_create_knowledge_base():
             )
             return vectorstore.as_retriever(search_kwargs={"k": 4})
         except Exception as e:
-            print(f"⚠️ Error cargando FAISS existente: {e}. Reconstruyendo...")
+            print(f"[WARN] Error cargando FAISS existente: {e}. Reconstruyendo...")
 
     return create_knowledge_base()
