@@ -5,14 +5,14 @@ import cl.pedagogia.backend.model.Usuario;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
 import java.util.List;
 
 @Repository
 public interface PlanificacionRepository extends JpaRepository<Planificacion, Long> {
-    List<Planificacion> findByProfesor(Usuario profesor);
-    List<Planificacion> findByAsignaturaId(Long asignaturaId);
+    List<Planificacion> findByEstudianteAutor(Usuario estudianteAutor);
+    List<Planificacion> findByEstudianteAutorOrderByCreatedAtDesc(Usuario estudianteAutor);
+    List<Planificacion> findByProfesorRevisor(Usuario profesorRevisor);
     List<Planificacion> findByEstado(Planificacion.Estado estado);
-    List<Planificacion> findByFechaClaseBetween(LocalDate inicio, LocalDate fin);
-    List<Planificacion> findByProfesorOrderByFechaClaseDesc(Usuario profesor);
+    List<Planificacion> findByEstadoOrderByCreatedAtDesc(Planificacion.Estado estado);
+    List<Planificacion> findAllByOrderByCreatedAtDesc();
 }

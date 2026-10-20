@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -13,10 +13,10 @@ import {
   GraduationCap,
   Menu,
   X,
-  ChevronRight,
-  ArrowLeft,
+  Plus,
+  BookOpen,
   Info,
-  Sparkles,
+  CheckCircle,
 } from "lucide-react";
 import { User, UserRole } from "@/types";
 import clsx from "clsx";
@@ -29,44 +29,20 @@ interface NavItem {
   badge?: string;
 }
 
-const navItems: NavItem[] = [
-  {
-    href: "/inicio",
-    label: "Inicio / Contexto",
-    icon: Info,
-    roles: ["ADMIN", "DIRECTIVO", "COORDINADOR", "PROFESOR", "ESTUDIANTE"],
-  },
-  {
-    href: "/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    roles: ["ADMIN", "DIRECTIVO", "COORDINADOR", "PROFESOR", "ESTUDIANTE"],
-  },
-  {
-    href: "/chatbot",
-    label: "Chatbot de Planificación",
-    icon: MessageSquare,
-    roles: ["ADMIN", "DIRECTIVO", "COORDINADOR", "PROFESOR", "ESTUDIANTE"],
-    badge: "IA",
-  },
-  {
-    href: "/planificaciones",
-    label: "Planificaciones",
-    icon: FileText,
-    roles: ["ADMIN", "DIRECTIVO", "COORDINADOR", "PROFESOR", "ESTUDIANTE"],
-  },
-  {
-    href: "/evaluaciones",
-    label: "Evaluaciones (Notas de Voz)",
-    icon: ClipboardList,
-    roles: ["ADMIN", "DIRECTIVO", "COORDINADOR", "PROFESOR"],
-  },
-  {
-    href: "/estudiantes",
-    label: "Estudiantes en Práctica",
-    icon: Users,
-    roles: ["ADMIN", "DIRECTIVO", "COORDINADOR", "PROFESOR"],
-  },
+const navItemsEstudiante: NavItem[] = [
+  { href: "/dashboard", label: "Mi Dashboard", icon: LayoutDashboard, roles: ["ESTUDIANTE"] },
+  { href: "/planificaciones", label: "Mis Planificaciones", icon: FileText, roles: ["ESTUDIANTE"] },
+  { href: "/planificaciones/nueva", label: "Nueva Planificacion", icon: Plus, roles: ["ESTUDIANTE"] },
+  { href: "/chatbot", label: "Chatbot Pedagogico", icon: MessageSquare, roles: ["ESTUDIANTE"], badge: "IA" },
+  { href: "/inicio", label: "Contexto del Proyecto", icon: Info, roles: ["ESTUDIANTE"] },
+];
+
+const navItemsProfesor: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["PROFESOR"] },
+  { href: "/planificaciones", label: "Planificaciones para Revisar", icon: FileText, roles: ["PROFESOR"], badge: "!" },
+  { href: "/estudiantes", label: "Mis Estudiantes", icon: Users, roles: ["PROFESOR"] },
+  { href: "/evaluaciones", label: "Evaluaciones y Observaciones", icon: ClipboardList, roles: ["PROFESOR"] },
+  { href: "/inicio", label: "Contexto del Proyecto", icon: Info, roles: ["PROFESOR"] },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -95,168 +71,138 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     router.push("/");
   };
 
-  const filteredNav = navItems.filter(
-    (item) => user && (item.roles.includes(user.rol) || user.rol === "ADMIN")
-  );
+  if (!user) return null;
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-[#1e3a5f] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  const navItems = user.rol === "PROFESOR" ? navItemsProfesor : navItemsEstudiante;
 
-  const isDashboardOrHome = pathname === "/dashboard" || pathname === "/inicio";
+  const rolLabel = user.rol === "PROFESOR" ? "Profesor Tutor" : "Estudiante en Practica";
+  const rolColor = user.rol === "PROFESOR"
+    ? "bg-green-100 text-green-800"
+    : "bg-blue-100 text-[#1e3a5f]";
 
-  return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        className={clsx(
-          "fixed lg:static inset-y-0 left-0 z-30 w-64 bg-[#1e3a5f] flex flex-col transition-transform duration-300 shadow-xl",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        )}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-white/10">
-          <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center shadow-inner">
-            <GraduationCap className="w-6 h-6 text-white" />
+  const Sidebar = () => (
+    <aside
+      className="h-full flex flex-col"
+      style={{ background: "linear-gradient(180deg, #1e3a5f 0%, #152b47 100%)" }}
+    >
+      {/* Header */}
+      <div className="px-5 py-6 border-b border-white/10">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center">
+            <GraduationCap className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-white font-bold text-base leading-tight">
-              SGP Matemáticas
-            </p>
-            <p className="text-blue-200 text-xs">Gestión Pedagógica</p>
+            <p className="font-bold text-white text-sm leading-tight">SGP Matematicas</p>
+            <p className="text-blue-300/70 text-[10px]">Practicas Pedagogicas</p>
           </div>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="ml-auto lg:hidden text-white/60 hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-          {filteredNav.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== "/dashboard" && item.href !== "/inicio" && pathname.startsWith(item.href));
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setSidebarOpen(false)}
-                className={clsx(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all duration-200",
-                  isActive
-                    ? "bg-white/20 text-white shadow-sm font-semibold"
-                    : "text-blue-100 hover:bg-white/10 hover:text-white"
-                )}
-              >
-                <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className="flex-1">{item.label}</span>
-                {item.badge && (
-                  <span className="text-[10px] uppercase tracking-wider font-bold bg-[#2d8a4e] text-white px-2 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-                    <Sparkles className="w-2.5 h-2.5" />
-                    {item.badge}
-                  </span>
-                )}
-                {isActive && (
-                  <ChevronRight className="w-4 h-4 text-blue-200 ml-auto" />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* User section */}
-        <div className="border-t border-white/10 p-4 bg-[#152b47]/50">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-[#2d8a4e] rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md">
-              {user.nombre?.[0]?.toUpperCase()}
-              {user.apellido?.[0]?.toUpperCase()}
+        {/* User card */}
+        <div className="bg-white/10 rounded-xl p-3 border border-white/10">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-xs">
+                {user.nombre?.charAt(0)}{user.apellido?.charAt(0)}
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-semibold truncate">
-                {user.nombre} {user.apellido}
-              </p>
-              <span className="inline-block text-[11px] font-medium bg-white/15 text-blue-100 px-2 py-0.5 rounded-md mt-0.5">
-                {user.rol}
+            <div className="min-w-0">
+              <p className="text-white font-semibold text-xs truncate">{user.nombre} {user.apellido}</p>
+              <span className={clsx("inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5", rolColor)}>
+                {rolLabel}
               </span>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-red-200 hover:text-white transition-all text-xs font-medium"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Cerrar sesión
-          </button>
         </div>
-      </aside>
+      </div>
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header Bar */}
-        <header className="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-gray-600 hover:text-gray-900 p-1"
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-
-            {/* Back to Dashboard Button when inside subpages */}
-            {!isDashboardOrHome && (
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 text-xs font-semibold text-[#1e3a5f] bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Volver al Dashboard
-              </Link>
-            )}
-
-            {/* Breadcrumb / Title hint */}
-            <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
-              <Link href="/inicio" className="hover:text-[#1e3a5f] font-medium">Inicio</Link>
-              <span>/</span>
-              <Link href="/dashboard" className="hover:text-[#1e3a5f] font-medium">Dashboard</Link>
-              {!isDashboardOrHome && (
-                <>
-                  <span>/</span>
-                  <span className="text-gray-900 font-semibold capitalize">
-                    {pathname.replace("/", "")}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Quick links header */}
-          <div className="flex items-center gap-3">
+      {/* Navigation */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {navItems.map((item) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          const Icon = item.icon;
+          return (
             <Link
-              href="/chatbot"
-              className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#2d8a4e] text-white px-3 py-1.5 rounded-lg hover:bg-[#226b3c] transition-colors shadow-xs"
+              key={item.href}
+              href={item.href}
+              onClick={() => setSidebarOpen(false)}
+              className={clsx(
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-150",
+                isActive
+                  ? "bg-white/20 text-white shadow-sm"
+                  : "text-blue-200 hover:bg-white/10 hover:text-white"
+              )}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              Probar Chatbot IA
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              <span className="flex-1">{item.label}</span>
+              {item.badge && (
+                <span className={clsx(
+                  "px-1.5 py-0.5 rounded-md text-[9px] font-bold",
+                  item.badge === "IA"
+                    ? "bg-yellow-400/20 text-yellow-300"
+                    : "bg-red-400/30 text-red-300"
+                )}>
+                  {item.badge}
+                </span>
+              )}
             </Link>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className="px-3 py-4 border-t border-white/10">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-blue-300 hover:text-white hover:bg-white/10 transition-colors text-xs font-medium"
+        >
+          <LogOut className="w-4 h-4" />
+          Cerrar Sesion
+        </button>
+      </div>
+    </aside>
+  );
+
+  return (
+    <div className="flex h-screen bg-gray-50">
+      {/* Desktop sidebar */}
+      <div className="hidden lg:flex w-64 flex-col flex-shrink-0">
+        <Sidebar />
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 flex">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <div className="relative w-72 flex flex-col shadow-xl z-50">
+            <Sidebar />
           </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile header */}
+        <header className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <GraduationCap className="w-5 h-5 text-[#1e3a5f]" />
+            <span className="font-bold text-[#1e3a5f] text-sm">SGP Matematicas</span>
+          </div>
+          <div className="w-9" />
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
       </div>
     </div>
   );

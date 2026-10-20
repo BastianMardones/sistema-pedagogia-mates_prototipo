@@ -20,6 +20,19 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * =============================================================================
+ * CONFIGURACIÓN DE SEGURIDAD: SecurityConfig (Spring Security 6 + JWT)
+ * PROYECTO: Sistema de Gestión de Prácticas Pedagógicas (SGP Matemáticas - UBB)
+ * =============================================================================
+ * PROPÓSITO:
+ * Define la arquitectura de seguridad sin estado (STATELESS) basada en JSON Web
+ * Tokens (JWT) y control de acceso basado en roles (RBAC) para los 2 perfiles:
+ *   - ESTUDIANTE: Acceso a su propio portafolio de planificaciones y chatbot.
+ *   - PROFESOR: Acceso a supervisión de estudiantes, visto bueno de planificaciones
+ *     y registro de evaluaciones de observación en aula con nota de voz.
+ * =============================================================================
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -32,6 +45,13 @@ public class SecurityConfig {
     @Value("${cors.allowed-origins:http://localhost:3000}")
     private String allowedOrigins;
 
+    /**
+     * Cadena de filtros HTTP:
+     * 1. Deshabilita CSRF (no requerido en APIs REST stateless con JWT).
+     * 2. Aplica política CORS para permitir peticiones desde Next.js (puerto 3000).
+     * 3. Restringe endpoints sensibles (/api/estudiantes, /api/evaluaciones) exclusivamente al rol PROFESOR.
+     * 4. Registra el filtro `JwtAuthenticationFilter` antes del filtro de usuario/contraseña.
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -39,8 +59,12 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/directivo/**").hasAnyRole("ADMIN", "DIRECTIVO")
+                .requestMatchers("/uploads/**").permitAll()
+                .requestMatchers("/api/planificaciones", "/api/planificaciones/**").authenticated()
+                .requestMatchers("/api/usuarios", "/api/usuarios/**").authenticated()
+                .requestMatchers("/api/asignaturas", "/api/asignaturas/**").authenticated()
+                .requestMatchers("/api/estudiantes", "/api/estudiantes/**").hasRole("PROFESOR")
+                .requestMatchers("/api/evaluaciones", "/api/evaluaciones/**").hasRole("PROFESOR")
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session
@@ -52,6 +76,10 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Configuración de CORS (Cross-Origin Resource Sharing) para autorizar
+     * cabeceras `Authorization: Bearer <token>` desde el cliente web Next.js.
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();

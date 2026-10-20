@@ -1,430 +1,268 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import AppLayout from "@/components/AppLayout";
-import {
-  FileText,
-  MessageSquare,
-  Users,
-  ClipboardList,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  ArrowRight,
-  BookOpen,
-  BarChart3,
-} from "lucide-react";
 import Link from "next/link";
-import { User, UserRole } from "@/types";
-import { planificacionService, estudianteService } from "@/lib/api";
+import { planificacionService } from "@/lib/api";
+import {
+  FileText, Plus, CheckCircle, Clock, XCircle, MessageSquare,
+  Users, ClipboardList, AlertTriangle, BookOpen, ChevronRight, Sparkles
+} from "lucide-react";
+import { User, Planificacion } from "@/types";
+import clsx from "clsx";
 
-interface StatCard {
-  label: string;
-  value: string | number;
-  icon: React.ElementType;
-  color: string;
-  bg: string;
-  href?: string;
+const ESTADO_CONFIG = {
+  BORRADOR: { label: "Borrador", color: "bg-gray-100 text-gray-600", icon: FileText },
+  EN_REVISION: { label: "En Revision", color: "bg-yellow-100 text-yellow-800", icon: Clock },
+  APROBADA: { label: "Aprobada", color: "bg-green-100 text-green-800", icon: CheckCircle },
+  RECHAZADA: { label: "Rechazada", color: "bg-red-100 text-red-800", icon: XCircle },
+};
+
+// ─── DASHBOARD ESTUDIANTE ─────────────────────────────────────────────────────
+function DashboardEstudiante({ user }: { user: User }) {
+  const [planificaciones, setPlanificaciones] = useState<Planificacion[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    planificacionService.getAll()
+      .then(r => setPlanificaciones(r.data?.slice(0, 5) || []))
+      .catch(() => setPlanificaciones([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const aprobadas = planificaciones.filter(p => p.estado === "APROBADA").length;
+  const enRevision = planificaciones.filter(p => p.estado === "EN_REVISION").length;
+  const rechazadas = planificaciones.filter(p => p.estado === "RECHAZADA").length;
+
+  return (
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
+      {/* Greeting */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-gray-200">
+        <div>
+          <p className="text-sm text-gray-500 mb-1">Bienvenido de vuelta</p>
+          <h1 className="text-3xl font-bold text-[#1e3a5f]" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Hola, {user.nombre}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">Aqui esta el resumen de tu portafolio de practicas</p>
+        </div>
+        <Link href="/planificaciones/nueva" className="btn-primary inline-flex items-center gap-2 text-sm font-bold py-2.5 px-5 shadow-md">
+          <Plus className="w-4 h-4" /> Nueva Planificacion
+        </Link>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {[
+          { label: "Total enviadas", value: planificaciones.length, color: "text-[#1e3a5f]", bg: "bg-blue-50" },
+          { label: "Aprobadas", value: aprobadas, color: "text-[#2d8a4e]", bg: "bg-green-50" },
+          { label: "En revision", value: enRevision, color: "text-yellow-700", bg: "bg-yellow-50" },
+          { label: "Rechazadas", value: rechazadas, color: "text-red-700", bg: "bg-red-50" },
+        ].map(stat => (
+          <div key={stat.label} className={clsx("card rounded-2xl p-5 text-center", stat.bg, "border-0 shadow-xs")}>
+            <p className={clsx("text-3xl font-bold", stat.color)}>{stat.value}</p>
+            <p className="text-xs text-gray-600 mt-1 font-medium">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick actions */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Link href="/planificaciones/nueva" className="card rounded-2xl p-6 hover:border-[#1e3a5f]/30 hover:shadow-md transition-all group border-2 border-dashed border-gray-200 bg-white">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center group-hover:bg-[#1e3a5f]/10 transition-colors">
+              <Plus className="w-6 h-6 text-[#1e3a5f]" />
+            </div>
+            <div>
+              <p className="font-bold text-gray-900 text-base">Nueva Planificacion</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                Llena la pauta institucional con los 3 momentos, DUA, NEET/NEEP y sube tu PDF
+              </p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/chatbot" className="card rounded-2xl p-6 hover:border-[#2d8a4e]/30 hover:shadow-md transition-all group border-2 border-dashed border-green-200 bg-white">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center group-hover:bg-[#2d8a4e]/10 transition-colors">
+              <Sparkles className="w-6 h-6 text-[#2d8a4e]" />
+            </div>
+            <div>
+              <p className="font-bold text-gray-900 text-base">Chatbot Pedagogico</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                La IA verifica tu planificacion y te hace preguntas de reflexion antes de retroalimentarte
+              </p>
+            </div>
+          </div>
+        </Link>
+      </div>
+
+      {/* Recent planificaciones */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-gray-900 text-base">Mis planificaciones recientes</h2>
+          <Link href="/planificaciones" className="text-xs text-[#1e3a5f] font-bold hover:underline">Ver todas</Link>
+        </div>
+
+        {loading ? (
+          <div className="card rounded-2xl p-6 text-center text-sm text-gray-400">Cargando...</div>
+        ) : planificaciones.length === 0 ? (
+          <div className="card rounded-2xl p-8 text-center border-dashed border-2 border-gray-200">
+            <BookOpen className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+            <p className="font-semibold text-gray-700">Aun no tienes planificaciones</p>
+            <p className="text-xs text-gray-400 mt-1 mb-4">Sube tu primera planificacion para comenzar</p>
+            <Link href="/planificaciones/nueva" className="btn-primary text-xs py-2 px-4 font-bold">Subir primera planificacion</Link>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {planificaciones.map(p => {
+              const cfg = ESTADO_CONFIG[p.estado];
+              return (
+                <Link key={p.id} href={`/planificaciones/${p.id}`} className="card rounded-2xl p-4 hover:border-[#1e3a5f]/30 hover:shadow-sm transition-all flex items-center gap-4">
+                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-5 h-5 text-[#1e3a5f]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{p.titulo}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{p.asignaturaClase || "Matematica"} · {p.cursoClase || "—"}</p>
+                  </div>
+                  <span className={clsx("px-2.5 py-1 rounded-lg text-[10px] font-bold flex-shrink-0", cfg.color)}>
+                    {cfg.label}
+                  </span>
+                  {p.estado === "RECHAZADA" && p.comentarioProfesor && (
+                    <div className="hidden sm:block max-w-xs">
+                      <p className="text-[10px] text-red-600 truncate">"{p.comentarioProfesor}"</p>
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
+// ─── DASHBOARD PROFESOR ───────────────────────────────────────────────────────
+function DashboardProfesor({ user }: { user: User }) {
+  const [pendientes, setPendientes] = useState<Planificacion[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    planificacionService.getPendientes()
+      .then(r => setPendientes(r.data?.slice(0, 8) || []))
+      .catch(() => setPendientes([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-8">
+      {/* Greeting */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-gray-200">
+        <div>
+          <p className="text-sm text-gray-500 mb-1">Panel de supervision</p>
+          <h1 className="text-3xl font-bold text-[#1e3a5f]" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Hola, Prof. {user.apellido}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">Revisa las planificaciones pendientes de tus estudiantes</p>
+        </div>
+        <div className="flex gap-3">
+          <Link href="/evaluaciones" className="btn-secondary inline-flex items-center gap-2 text-xs font-bold py-2.5 px-4">
+            <ClipboardList className="w-4 h-4" /> Nueva Evaluacion
+          </Link>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {[
+          { label: "Pendientes de revision", value: pendientes.length, color: "text-yellow-700", bg: "bg-yellow-50", href: "/planificaciones" },
+          { label: "Total estudiantes", value: 3, color: "text-[#1e3a5f]", bg: "bg-blue-50", href: "/estudiantes" },
+          { label: "Evaluaciones este mes", value: 2, color: "text-[#2d8a4e]", bg: "bg-green-50", href: "/evaluaciones" },
+        ].map(stat => (
+          <Link key={stat.label} href={stat.href} className={clsx("card rounded-2xl p-5 text-center hover:shadow-md transition-all", stat.bg, "border-0 shadow-xs")}>
+            <p className={clsx("text-3xl font-bold", stat.color)}>{stat.value}</p>
+            <p className="text-xs text-gray-600 mt-1 font-medium">{stat.label}</p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Quick links */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        {[
+          { href: "/planificaciones", icon: FileText, title: "Revisar planificaciones", desc: "Aprueba o rechaza las entregas de tus estudiantes", color: "bg-blue-50 text-[#1e3a5f]" },
+          { href: "/estudiantes", icon: Users, title: "Ver estudiantes", desc: "Consulta el portafolio completo de cada alumno", color: "bg-green-50 text-[#2d8a4e]" },
+          { href: "/evaluaciones", icon: ClipboardList, title: "Registrar observacion", desc: "Completa la pauta de evaluacion con nota de voz", color: "bg-orange-50 text-orange-700" },
+        ].map(item => (
+          <Link key={item.href} href={item.href} className="card rounded-2xl p-5 hover:shadow-md transition-all group">
+            <div className={clsx("w-10 h-10 rounded-xl flex items-center justify-center mb-3", item.color)}>
+              <item.icon className="w-5 h-5" />
+            </div>
+            <p className="font-bold text-gray-900 text-sm">{item.title}</p>
+            <p className="text-xs text-gray-500 mt-1">{item.desc}</p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Planificaciones pendientes */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-gray-900 text-base flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-yellow-600" />
+            Planificaciones pendientes de revision
+          </h2>
+          <Link href="/planificaciones" className="text-xs text-[#1e3a5f] font-bold hover:underline">Ver todas</Link>
+        </div>
+
+        {loading ? (
+          <div className="card rounded-2xl p-6 text-center text-sm text-gray-400">Cargando...</div>
+        ) : pendientes.length === 0 ? (
+          <div className="card rounded-2xl p-8 text-center border-dashed border-2 border-gray-200">
+            <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-3" />
+            <p className="font-semibold text-gray-700">Todo al dia</p>
+            <p className="text-xs text-gray-400 mt-1">No hay planificaciones pendientes de revision</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendientes.map(p => (
+              <Link key={p.id} href={`/planificaciones/${p.id}/revisar`} className="card rounded-2xl p-4 hover:border-yellow-300 hover:shadow-sm transition-all flex items-center gap-4 border-l-4 border-l-yellow-400">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm truncate">{p.titulo}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Estudiante: <strong>{p.estudianteAutorNombre || "—"}</strong> · {p.asignaturaClase || "Matematica"} · {p.cursoClase || "—"}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{new Date(p.createdAt).toLocaleDateString("es-CL")}</p>
+                </div>
+                <span className="flex items-center gap-1 text-xs font-bold text-yellow-700 bg-yellow-100 px-3 py-1.5 rounded-xl flex-shrink-0">
+                  <Clock className="w-3.5 h-3.5" /> Revisar
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [stats, setStats] = useState<Record<string, number>>({});
-  const [recentItems, setRecentItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const stored = localStorage.getItem("user");
     if (stored) {
-      const u = JSON.parse(stored);
-      setUser(u);
-      loadData(u.rol);
+      try { setUser(JSON.parse(stored)); } catch {}
     }
   }, []);
 
-  const loadData = async (rol: UserRole) => {
-    try {
-      const [planRes] = await Promise.allSettled([
-        planificacionService.getAll(),
-      ]);
-
-      if (planRes.status === "fulfilled") {
-        const plans = planRes.value.data || [];
-        const counts = {
-          total: plans.length,
-          aprobadas: plans.filter((p: any) => p.estado === "APROBADA").length,
-          pendientes: plans.filter(
-            (p: any) => p.estado === "ENVIADA" || p.estado === "EN_REVISION"
-          ).length,
-          rechazadas: plans.filter((p: any) => p.estado === "RECHAZADA").length,
-        };
-        setStats(counts);
-        setRecentItems(plans.slice(0, 5));
-      }
-
-      if (rol !== "ESTUDIANTE") {
-        const estRes = await estudianteService.getAll().catch(() => null);
-        if (estRes) {
-          setStats((prev) => ({
-            ...prev,
-            estudiantes: estRes.data?.length || 0,
-          }));
-        }
-      }
-    } catch {
-      // Silently handle - API may not be running
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Buenos días";
-    if (hour < 18) return "Buenas tardes";
-    return "Buenas noches";
-  };
-
-  const getStatCards = (): StatCard[] => {
-    if (!user) return [];
-
-    const base: StatCard[] = [
-      {
-        label: "Total Planificaciones",
-        value: stats.total ?? "—",
-        icon: FileText,
-        color: "text-blue-600",
-        bg: "bg-blue-50",
-        href: "/planificaciones",
-      },
-      {
-        label: "Aprobadas",
-        value: stats.aprobadas ?? "—",
-        icon: CheckCircle,
-        color: "text-green-600",
-        bg: "bg-green-50",
-      },
-      {
-        label: "En Revisión",
-        value: stats.pendientes ?? "—",
-        icon: Clock,
-        color: "text-yellow-600",
-        bg: "bg-yellow-50",
-      },
-      {
-        label: "Rechazadas",
-        value: stats.rechazadas ?? "—",
-        icon: AlertCircle,
-        color: "text-red-600",
-        bg: "bg-red-50",
-      },
-    ];
-
-    if (user.rol !== "ESTUDIANTE") {
-      base.push({
-        label: "Estudiantes",
-        value: stats.estudiantes ?? "—",
-        icon: Users,
-        color: "text-purple-600",
-        bg: "bg-purple-50",
-        href: "/estudiantes",
-      });
-    }
-
-    return base;
-  };
-
-  const getRoleQuickActions = () => {
-    if (!user) return [];
-
-    const actions: { href: string; label: string; description: string; icon: React.ElementType; color: string }[] = [];
-
-    if (user.rol === "ESTUDIANTE") {
-      actions.push(
-        {
-          href: "/chatbot",
-          label: "Analizar Planificación",
-          description: "Sube tu planificación al asistente IA",
-          icon: MessageSquare,
-          color: "bg-[#2d8a4e]",
-        },
-        {
-          href: "/planificaciones",
-          label: "Mis Planificaciones",
-          description: "Ver el historial de tus planificaciones",
-          icon: FileText,
-          color: "bg-[#1e3a5f]",
-        }
-      );
-    } else {
-      actions.push(
-        {
-          href: "/planificaciones",
-          label: "Revisar Planificaciones",
-          description: "Planificaciones pendientes de revisión",
-          icon: FileText,
-          color: "bg-[#1e3a5f]",
-        },
-        {
-          href: "/evaluaciones",
-          label: "Observaciones de Clase",
-          description: "Registrar observaciones y notas de voz",
-          icon: ClipboardList,
-          color: "bg-[#2d8a4e]",
-        },
-        {
-          href: "/estudiantes",
-          label: "Gestionar Estudiantes",
-          description: "Ver y gestionar estudiantes del sistema",
-          icon: Users,
-          color: "bg-purple-600",
-        }
-      );
-    }
-
-    return actions;
-  };
-
-  const statusBadge = (estado: string) => {
-    const map: Record<string, string> = {
-      BORRADOR: "badge-draft",
-      ENVIADA: "badge-pending",
-      EN_REVISION: "badge-pending",
-      APROBADA: "badge-approved",
-      RECHAZADA: "badge-rejected",
-    };
-    return map[estado] || "badge-draft";
-  };
-
-  const statusLabel = (estado: string) => {
-    const map: Record<string, string> = {
-      BORRADOR: "Borrador",
-      ENVIADA: "Enviada",
-      EN_REVISION: "En Revisión",
-      APROBADA: "Aprobada",
-      RECHAZADA: "Rechazada",
-    };
-    return map[estado] || estado;
-  };
+  if (!user) return null;
 
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-[#1e3a5f] mb-1" style={{ fontFamily: "'Playfair Display', serif" }}>
-            {getGreeting()}, {user?.nombre} 👋
-          </h1>
-          <p className="text-gray-500">
-            {new Date().toLocaleDateString("es-CL", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          </p>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {getStatCards().map((card) => {
-            const Icon = card.icon;
-            const Wrapper = card.href ? Link : "div";
-            return (
-              <Wrapper
-                key={card.label}
-                href={card.href || "#"}
-                className="card hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">{card.label}</p>
-                    <p className="text-3xl font-bold text-gray-800">
-                      {loading ? (
-                        <span className="inline-block w-8 h-8 bg-gray-100 rounded animate-pulse" />
-                      ) : (
-                        card.value
-                      )}
-                    </p>
-                  </div>
-                  <div className={`${card.bg} ${card.color} p-2.5 rounded-lg`}>
-                    <Icon className="w-5 h-5" />
-                  </div>
-                </div>
-                {card.href && (
-                  <div className="flex items-center gap-1 mt-3 text-xs font-medium text-gray-400 hover:text-[#1e3a5f] transition-colors">
-                    Ver todos <ArrowRight className="w-3 h-3" />
-                  </div>
-                )}
-              </Wrapper>
-            );
-          })}
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Quick Actions */}
-          <div className="lg:col-span-1">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">
-              Acciones rápidas
-            </h2>
-            <div className="space-y-3">
-              {getRoleQuickActions().map((action) => {
-                const Icon = action.icon;
-                return (
-                  <Link
-                    key={action.href}
-                    href={action.href}
-                    className="flex items-center gap-4 card hover:shadow-md transition-all group p-4"
-                  >
-                    <div className={`${action.color} p-2.5 rounded-lg flex-shrink-0`}>
-                      <Icon className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-800 text-sm group-hover:text-[#1e3a5f]">
-                        {action.label}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">
-                        {action.description}
-                      </p>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-[#1e3a5f] group-hover:translate-x-1 transition-all flex-shrink-0" />
-                  </Link>
-                );
-              })}
-            </div>
-
-            {/* Progress indicator for students */}
-            {user?.rol === "ESTUDIANTE" && (
-              <div className="card mt-4 bg-gradient-to-br from-[#1e3a5f] to-[#2a4f7c] text-white">
-                <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="w-5 h-5" />
-                  <span className="font-semibold text-sm">Tu progreso</span>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-blue-200">Planificaciones</span>
-                    <span className="font-medium">{stats.total || 0}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-blue-200">Aprobadas</span>
-                    <span className="font-medium text-green-300">
-                      {stats.aprobadas || 0}
-                    </span>
-                  </div>
-                  {stats.total > 0 && (
-                    <>
-                      <div className="mt-3">
-                        <div className="flex justify-between text-xs mb-1">
-                          <span className="text-blue-200">Tasa de aprobación</span>
-                          <span>
-                            {Math.round(
-                              ((stats.aprobadas || 0) / stats.total) * 100
-                            )}
-                            %
-                          </span>
-                        </div>
-                        <div className="h-2 bg-white/20 rounded-full">
-                          <div
-                            className="h-2 bg-[#2d8a4e] rounded-full transition-all"
-                            style={{
-                              width: `${Math.round(
-                                ((stats.aprobadas || 0) / stats.total) * 100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Recent Planificaciones */}
-          <div className="lg:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">
-                Planificaciones recientes
-              </h2>
-              <Link
-                href="/planificaciones"
-                className="text-sm text-[#1e3a5f] hover:text-[#2a4f7c] font-medium flex items-center gap-1"
-              >
-                Ver todas <ArrowRight className="w-3 h-3" />
-              </Link>
-            </div>
-
-            <div className="card p-0 overflow-hidden">
-              {loading ? (
-                <div className="p-6 space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
-                  ))}
-                </div>
-              ) : recentItems.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                  <BookOpen className="w-10 h-10 mb-3 opacity-40" />
-                  <p className="text-sm font-medium">No hay planificaciones aún</p>
-                  <p className="text-xs mt-1">
-                    {user?.rol === "ESTUDIANTE"
-                      ? "Sube tu primera planificación al asistente IA"
-                      : "Las planificaciones enviadas aparecerán aquí"}
-                  </p>
-                  {user?.rol === "ESTUDIANTE" && (
-                    <Link href="/chatbot" className="btn-accent mt-4 text-sm py-2 px-4">
-                      Comenzar ahora
-                    </Link>
-                  )}
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-50">
-                  {recentItems.map((plan: any) => (
-                    <div
-                      key={plan.id}
-                      className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <FileText className="w-4 h-4 text-[#1e3a5f]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">
-                          {plan.titulo}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(plan.createdAt).toLocaleDateString("es-CL")}
-                          {plan.estudiante &&
-                            ` · ${plan.estudiante.nombre} ${plan.estudiante.apellido}`}
-                        </p>
-                      </div>
-                      <span className={statusBadge(plan.estado)}>
-                        {statusLabel(plan.estado)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Analytics card for coordinadores */}
-            {(user?.rol === "COORDINADOR" || user?.rol === "DIRECTIVO") && (
-              <div className="card mt-4 flex items-center gap-4">
-                <div className="bg-purple-50 p-3 rounded-lg">
-                  <BarChart3 className="w-6 h-6 text-purple-600" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-800">Reportes y Estadísticas</p>
-                  <p className="text-sm text-gray-500">
-                    Visualiza métricas de desempeño de todos los estudiantes
-                  </p>
-                </div>
-                <button className="btn-secondary text-sm py-2">Ver reportes</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {user.rol === "PROFESOR"
+        ? <DashboardProfesor user={user} />
+        : <DashboardEstudiante user={user} />}
     </AppLayout>
   );
 }

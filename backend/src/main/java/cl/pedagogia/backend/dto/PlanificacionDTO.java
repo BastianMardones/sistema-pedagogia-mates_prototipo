@@ -1,96 +1,115 @@
 package cl.pedagogia.backend.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class PlanificacionDTO {
 
     @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class Request {
-        @NotNull
-        private Long idAsignatura;
-
-        @NotBlank
+        @NotBlank(message = "El titulo es obligatorio")
         private String titulo;
 
-        @NotNull
-        private LocalDate fechaClase;
+        // Equipo y caracterizacion
+        private String equipoCoEnsenanza;
+        private Integer numEstNEET;
+        private String diagnosticosNEET;
+        private Integer numEstNEEP;
+        private String diagnosticosNEEP;
+        private Integer estiloVisual;
+        private Integer estiloKinestetivo;
+        private Integer estiloAuditivo;
+        private String otrosDatos;
 
-        @NotBlank(message = "El objetivo de la clase es requerido")
-        private String objetivo;
+        // Datos generales
+        private Integer anioClase;
+        private String periodoClase;
+        private String asignaturaClase;
+        private String cursoClase;
+        private String unidadTematica;
 
-        // Recursos didácticos
-        private String recursos;
+        // Objetivos
+        private String objetivoOA;
+        private String indicadoresEvaluacion;
+        private String objetivoTransversal;
+        private String objetivoClase;
 
-        // Instrumento de evaluación
-        private String instrumentoEvaluacion;
+        // 3 Momentos + DUA
+        private String momentoInicio;
+        private String momentoDesarrollo;
+        private String momentoCierre;
+        private String principiosDUA;
+        private String evaluacionClase;
 
-        // Los 3 momentos de la clase (textos descriptivos)
-        @NotBlank(message = "La descripción del inicio es requerida")
-        private String inicio;
-
-        @NotBlank(message = "La descripción del desarrollo es requerida")
-        private String desarrollo;
-
-        @NotBlank(message = "La descripción del cierre es requerida")
-        private String cierre;
-
-        // DUA - Diseño Universal para el Aprendizaje
-        private String duaInicio;
-        private String duaDesarrollo;
-        private String duaCierre;
-
-        // PIE - Proyecto de Integración Escolar
-        private String adaptacionesPie;
-
-        // Dificultades anticipadas y cómo abordarlas
-        private String dificultadesAnticipadas;
-
-        private String observaciones;
+        // PDF
+        private String pdfUrl;
     }
 
     @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
     public static class Response {
         private Long id;
         private String titulo;
-        private LocalDate fechaClase;
-        private String objetivo;
-        private String recursos;
-        private String instrumentoEvaluacion;
-        private String inicio;
-        private String desarrollo;
-        private String cierre;
-        private String duaInicio;
-        private String duaDesarrollo;
-        private String duaCierre;
-        private String adaptacionesPie;
-        private String dificultadesAnticipadas;
+
+        private String equipoCoEnsenanza;
+        private Integer numEstNEET;
+        private String diagnosticosNEET;
+        private Integer numEstNEEP;
+        private String diagnosticosNEEP;
+        private Integer estiloVisual;
+        private Integer estiloKinestetivo;
+        private Integer estiloAuditivo;
+        private String otrosDatos;
+
+        private Integer anioClase;
+        private String periodoClase;
+        private String asignaturaClase;
+        private String cursoClase;
+        private String unidadTematica;
+
+        private String objetivoOA;
+        private String indicadoresEvaluacion;
+        private String objetivoTransversal;
+        private String objetivoClase;
+
+        private String momentoInicio;
+        private String momentoDesarrollo;
+        private String momentoCierre;
+        private String principiosDUA;
+        private String evaluacionClase;
+
+        private String pdfUrl;
         private String estado;
-        private String observaciones;
-        private AsignaturaResumen asignatura;
-        private ProfesorResumen profesor;
+        private String comentarioProfesor;
+        private String retroalimentacionIA;
+        private String historialChatbot;
+
+        private Long estudianteAutorId;
+        private String estudianteAutorNombre;
+        private Long profesorRevisorId;
+
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
-        // Indicador si pasó por el chatbot
-        private Boolean retroalimentadaPorChatbot;
-        private String sesionChatbotId;
     }
 
     @Data
-    public static class AsignaturaResumen {
-        private Long id;
-        private String codigo;
-        private String nombre;
+    public static class RevisionRequest {
+        private String comentario;
     }
 
     @Data
-    public static class ProfesorResumen {
-        private Long id;
-        private String nombre;
-        private String apellido;
+    public static class ChatbotUpdateRequest {
+        private String retroalimentacionIA;
+        private String historialChatbot;
     }
 }

@@ -1,690 +1,529 @@
 "use client";
 
+/**
+ * =============================================================================
+ * PÁGINA: Evaluaciones y Observaciones de Clase (/evaluaciones)
+ * PROYECTO: Sistema de Gestión de Prácticas Pedagógicas (SGP Matemáticas - UBB)
+ * =============================================================================
+ * PROPÓSITO DE NEGOCIO:
+ * Digitaliza la pauta de observación en aula aplicada por el Profesor Tutor o
+ * Profesor Colaborador en los establecimientos educacionales.
+ *
+ * SOLUCIÓN AL "TOQUE DE TIMBRE":
+ * Incluye un sistema dual de Grabación y Transcripción de Notas de Voz (es-CL):
+ *   1. Transcripción en Vivo (Web Speech API - SpeechRecognition / webkitSpeechRecognition):
+ *      Convierte la voz del docente a texto en tiempo real mientras habla.
+ *   2. Grabación de Audio + Respaldo Backend (MediaRecorder API + FastAPI /voz/transcribir):
+ *      Captura el archivo de audio (con reproductor integrado para escuchar la nota)
+ *      y, si el navegador no soporta dictado en vivo, lo envía al microservicio Python
+ *      que lo convierte con FFmpeg y lo transcribe con SpeechRecognition / Whisper.
+ * =============================================================================
+ */
+
 import { useState, useEffect, useRef } from "react";
 import AppLayout from "@/components/AppLayout";
-import { chatbotApi } from "@/lib/api";
-import {
-  Mic,
-  MicOff,
-  Square,
-  Play,
-  Pause,
-  Trash2,
-  Plus,
-  Search,
-  ClipboardList,
-  Clock,
-  CheckCircle,
-  User,
-  Calendar,
-  AlertTriangle,
-  Upload,
-  ChevronDown,
-  Sparkles,
-  FileAudio,
-  CheckCircle2,
-} from "lucide-react";
+import { evaluacionService } from "@/lib/api";
+import { Mic, MicOff, CheckCircle, Save, Plus, AlertCircle, FileText, Volume2 } from "lucide-react";
+import { User } from "@/types";
 import clsx from "clsx";
 
-interface VoiceNote {
-  id: string;
-  blob: Blob;
-  url: string;
-  duration: number;
-  createdAt: Date;
+/**
+ * Criterios oficiales de la rúbrica de observación de clases de práctica (escala 1 a 5).
+ * Evalúan gestión de aula, coherencia con el OA del MINEDUC, los 3 momentos, DUA y PIE.
+ */
+const CRITERIOS_RUBRICA = [
+  { id: "gestion_aula", nombre: "Gestión del Aula", descripcion: "Manejo del espacio, tiempo y clima de convivencia escolar del grupo" },
+  { id: "implementacion_oa", nombre: "Implementación del OA", descripcion: "Las actividades permiten lograr el Objetivo de Aprendizaje (MINEDUC) declarado" },
+  { id: "momentos_clase", nombre: "3 Momentos de la Clase", descripcion: "Inicio (15m), Desarrollo (60m) y Cierre (15m) estructurados y respetados" },
+  { id: "aplicacion_dua", nombre: "Aplicación del DUA", descripcion: "Los principios DUA declarados en la planificación fueron implementados en aula" },
+  { id: "atencion_diversidad", nombre: "Atención a la Diversidad (NEET/NEEP)", descripcion: "Estrategias concretas para atender a estudiantes del PIE con necesidades educativas" },
+  { id: "evaluacion_formativa", nombre: "Evaluación Formativa", descripcion: "Se aplicó el instrumento de evaluación (rúbrica, lista de cotejo o ticket de salida)" },
+  { id: "reflexion_pedagogica", nombre: "Reflexión Pedagógica", descripcion: "El docente en práctica demuestra autocrítica y reflexión sobre su propia clase" },
+];
+
+interface PuntajeState {
+  [key: string]: number;
 }
 
-interface Observacion {
-  id: number;
-  titulo: string;
-  fecha: string;
-  estudiante: string;
-  seccion: string;
-  puntaje?: number;
-  estado: "pendiente" | "completada";
-  notaVoz?: VoiceNote;
-  transcripcion?: string;
-}
+export default function EvaluacionesPage() {
+  // Estado de sesión del usuario autenticado (Solo accesible por rol PROFESOR)
+  const [user, setUser] = useState<User | null>(null);
+  const [modo, setModo] = useState<"lista" | "nueva">("lista");
+  const [evaluaciones, setEvaluaciones] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-// ─── Voice Recorder Component ─────────────────────────────────────────────────
-function VoiceRecorder({
-  onSave,
-  onTranscribe,
-  existingNote,
-}: {
-  onSave: (note: VoiceNote) => void;
-  onTranscribe?: (text: string) => void;
-  existingNote?: VoiceNote;
-}) {
+  // Estado del formulario de nueva evaluación
+  const [titulo, setTitulo] = useState("");
+  const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0]);
+  const [estudiante, setEstudiante] = useState("");
+  const [observaciones, setObservaciones] = useState("");
+  const [puntajes, setPuntajes] = useState<PuntajeState>({});
+
+  // Estado del módulo de Grabación y Transcripción de Voz
   const [isRecording, setIsRecording] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [transcribing, setTranscribing] = useState(false);
-  const [transcribedText, setTranscribedText] = useState("");
-  const [elapsed, setElapsed] = useState(0);
-  const [voiceNote, setVoiceNote] = useState<VoiceNote | undefined>(
-    existingNote
-  );
-  const [error, setError] = useState("");
-  const [amplitude, setAmplitude] = useState<number[]>(Array(20).fill(5));
+  const [isTranscribiendo, setIsTranscribiendo] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState(""); // Texto parcial mientras el profesor habla
+  const [audioUrl, setAudioUrl] = useState<string | null>(null); // URL local para reproducir el audio grabado
+  const [recordingError, setRecordingError] = useState("");
 
+  // Referencias para MediaRecorder (captura de archivo de audio) y SpeechRecognition (dictado en vivo)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<any>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number>(0);
+  const capturedViaLiveSpeechRef = useRef<boolean>(false);
 
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
+  // Estado de guardado en el Backend Spring Boot
+  const [guardando, setGuardando] = useState(false);
+  const [guardadoOk, setGuardadoOk] = useState(false);
+  const [error, setError] = useState("");
 
-  const transcribeAudioBlob = async (blob: Blob) => {
-    setTranscribing(true);
-    setError("");
-    try {
-      const formData = new FormData();
-      formData.append("audio", blob, "nota_voz.webm");
-      formData.append("formato", "webm");
-
-      const response = await chatbotApi.post("/voz/transcribir", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      const texto = response.data.texto;
-      setTranscribedText(texto);
-      if (onTranscribe) {
-        onTranscribe(texto);
-      }
-    } catch (err: any) {
-      console.warn("Error transcribiendo:", err);
-      // Fallback de transcripción pedagógica realista
-      const fallbackTexto = "Observación cualitativa: El estudiante en práctica Matías Silva demuestra un adecuado dominio conceptual en el inicio con la balanza GeoGebra. Se observa una adecuada participación en duplas; se recomienda monitorear con mayor frecuencia las mesas del fondo durante el desarrollo.";
-      setTranscribedText(fallbackTexto);
-      if (onTranscribe) {
-        onTranscribe(fallbackTexto);
-      }
-    } finally {
-      setTranscribing(false);
-    }
-  };
-
-  const startRecording = async () => {
-    setError("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // Waveform visualizer
-      const audioCtx = new AudioContext();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const updateWave = () => {
-        const data = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(data);
-        const bars = Array.from({ length: 20 }, (_, i) =>
-          Math.max(4, (data[Math.floor((i / 20) * data.length)] / 255) * 48)
-        );
-        setAmplitude(bars);
-        animFrameRef.current = requestAnimationFrame(updateWave);
-      };
-      updateWave();
-
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/ogg";
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const note: VoiceNote = {
-          id: Date.now().toString(),
-          blob,
-          url,
-          duration: elapsed,
-          createdAt: new Date(),
-        };
-        setVoiceNote(note);
-        onSave(note);
-        transcribeAudioBlob(blob);
-
-        stream.getTracks().forEach((t) => t.stop());
-        cancelAnimationFrame(animFrameRef.current);
-        setAmplitude(Array(20).fill(5));
-      };
-
-      recorder.start(100);
-      setIsRecording(true);
-      setElapsed(0);
-      timerRef.current = setInterval(
-        () => setElapsed((e) => e + 1),
-        1000
-      );
-    } catch (err) {
-      setError(
-        "No se pudo acceder al micrófono. Puedes usar el botón de prueba rápida abajo."
-      );
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setIsPaused(false);
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-  };
-
-  const togglePause = () => {
-    if (!mediaRecorderRef.current) return;
-    if (isPaused) {
-      mediaRecorderRef.current.resume();
-      timerRef.current = setInterval(
-        () => setElapsed((e) => e + 1),
-        1000
-      );
-    } else {
-      mediaRecorderRef.current.pause();
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    setIsPaused(!isPaused);
-  };
-
-  const togglePlay = () => {
-    if (!voiceNote) return;
-    if (!audioRef.current) {
-      audioRef.current = new Audio(voiceNote.url);
-      audioRef.current.onended = () => setIsPlaying(false);
-    }
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const deleteNote = () => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    setVoiceNote(undefined);
-    setTranscribedText("");
-    setIsPlaying(false);
-    setElapsed(0);
-  };
-
-  const handleSampleVoiceNote = () => {
-    const dummyBlob = new Blob(["sample audio bytes"], { type: "audio/webm" });
-    const note: VoiceNote = {
-      id: Date.now().toString(),
-      blob: dummyBlob,
-      url: "",
-      duration: 18,
-      createdAt: new Date(),
-    };
-    setVoiceNote(note);
-    onSave(note);
-    transcribeAudioBlob(dummyBlob);
-  };
-
+  /**
+   * Al montar el componente:
+   * 1. Carga el usuario desde localStorage.
+   * 2. Obtiene la lista histórica de evaluaciones desde el Backend (/api/evaluaciones).
+   */
   useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      cancelAnimationFrame(animFrameRef.current);
-    };
+    const stored = localStorage.getItem("user");
+    if (stored) {
+      try { setUser(JSON.parse(stored)); } catch {}
+    }
+    evaluacionService.getAll()
+      .then(r => setEvaluaciones(r.data || []))
+      .catch(() => setEvaluaciones([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  return (
-    <div className="space-y-3">
-      {error && (
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-3.5 py-2.5 text-xs">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Recording UI */}
-      {isRecording ? (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-4">
-            {/* Waveform */}
-            <div className="flex items-center gap-0.5 h-12 flex-1">
-              {amplitude.map((h, i) => (
-                <div
-                  key={i}
-                  className="flex-1 bg-red-500 rounded-full transition-all duration-75"
-                  style={{ height: `${h}px` }}
-                />
-              ))}
-            </div>
-
-            {/* Timer */}
-            <div className="flex items-center gap-1.5 flex-shrink-0 bg-white px-3 py-1.5 rounded-lg border border-red-100 shadow-xs">
-              <span className="w-2.5 h-2.5 bg-red-600 rounded-full animate-pulse" />
-              <span className="font-mono text-red-700 font-bold text-sm">
-                {formatTime(elapsed)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={togglePause}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-red-200 text-red-600 text-xs font-bold hover:bg-red-50 transition-colors"
-            >
-              {isPaused ? (
-                <>
-                  <Mic className="w-3.5 h-3.5" /> Reanudar
-                </>
-              ) : (
-                <>
-                  <Pause className="w-3.5 h-3.5" /> Pausar
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={stopRecording}
-              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors shadow-sm"
-            >
-              <Square className="w-3.5 h-3.5" /> Finalizar y Transcribir con IA
-            </button>
-          </div>
-        </div>
-      ) : voiceNote ? (
-        /* Playback + Transcription state */
-        <div className="bg-blue-50/60 border border-blue-200 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="w-10 h-10 rounded-xl bg-[#1e3a5f] text-white flex items-center justify-center flex-shrink-0 hover:bg-[#2a4f7c] transition-colors shadow-sm"
-            >
-              {isPlaying ? (
-                <Pause className="w-4 h-4" />
-              ) : (
-                <Play className="w-4 h-4 ml-0.5" />
-              )}
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-xs font-bold text-gray-900">
-                  Nota de voz capturada
-                </p>
-                {transcribing ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-semibold">
-                    <span className="w-2 h-2 border border-yellow-800 border-t-transparent rounded-full animate-spin" />
-                    Transcribiendo con IA...
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-bold">
-                    <CheckCircle2 className="w-3 h-3" /> Transcrito automáticamente
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Duración: {formatTime(voiceNote.duration)} · Grabada hoy
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={deleteNote}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
-              title="Eliminar audio"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Start recording buttons */
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={startRecording}
-            className="flex items-center justify-center gap-2 w-full px-4 py-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-2xl transition-all text-xs font-bold shadow-xs"
-          >
-            <Mic className="w-4 h-4 text-red-600" />
-            Grabar Nota de Voz en Aula
-          </button>
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={handleSampleVoiceNote}
-              className="inline-flex items-center gap-1.5 text-[11px] text-[#1e3a5f] hover:underline font-semibold"
-            >
-              <Sparkles className="w-3 h-3 text-[#2d8a4e]" />
-              Probar con audio de observación simulado (1 clic)
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Observation Form Modal ───────────────────────────────────────────────────
-function ObservacionModal({
-  onClose,
-  onSave,
-}: {
-  onClose: () => void;
-  onSave: (obs: Observacion) => void;
-}) {
-  const [titulo, setTitulo] = useState("Observación de Clase - Ecuaciones Lineales");
-  const [estudiante, setEstudiante] = useState("Matías Silva Morales");
-  const [seccion, setSeccion] = useState("1° Medio A");
-  const [fecha, setFecha] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [transcripcion, setTranscripcion] = useState("");
-  const [voiceNote, setVoiceNote] = useState<VoiceNote | undefined>();
-  const [puntaje, setPuntaje] = useState("92");
-
-  const handleSave = () => {
-    if (!titulo || !estudiante) return;
-    const obs: Observacion = {
-      id: Date.now(),
-      titulo,
-      fecha,
-      estudiante,
-      seccion,
-      puntaje: puntaje ? parseInt(puntaje) : undefined,
-      estado: "completada",
-      notaVoz: voiceNote,
-      transcripcion,
-    };
-    onSave(obs);
-    onClose();
+  /** Asigna el puntaje (1 a 5) a un criterio específico de la rúbrica */
+  const setPuntaje = (id: string, val: number) => {
+    setPuntajes(p => ({ ...p, [id]: val }));
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl space-y-5 animate-in fade-in zoom-in duration-200">
-        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
-          <div>
-            <h3 className="font-bold text-gray-900 text-base">Nueva Observación de Clase</h3>
-            <p className="text-xs text-gray-500">Pauta de evaluación docente en aula</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-xl hover:bg-gray-100 font-bold"
-          >
-            ✕
-          </button>
-        </div>
+  /**
+   * Inicia la grabación de voz combinando:
+   * - Web Speech API (webkitSpeechRecognition) para transcripción instantánea en español (es-CL).
+   * - MediaRecorder API para almacenar el clip de audio y enviarlo al servidor Python si es necesario.
+   */
+  const startRecording = async () => {
+    setRecordingError("");
+    setLiveTranscript("");
+    capturedViaLiveSpeechRef.current = false;
 
-        <div className="p-6 space-y-4 pt-0">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-              Título de la observación *
-            </label>
-            <input
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              placeholder="ej: Observación clase de Álgebra"
-              className="input-field text-xs sm:text-sm"
-            />
-          </div>
+    try {
+      // 1. Solicitar permiso de micrófono al navegador
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Estudiante en práctica *
-              </label>
-              <input
-                value={estudiante}
-                onChange={(e) => setEstudiante(e.target.value)}
-                placeholder="Nombre del alumno"
-                className="input-field text-xs sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Curso / Sección
-              </label>
-              <input
-                value={seccion}
-                onChange={(e) => setSeccion(e.target.value)}
-                placeholder="ej: 1° Medio A"
-                className="input-field text-xs sm:text-sm"
-              />
-            </div>
-          </div>
+      // 2. Seleccionar el formato MIME de audio compatible con el navegador actual
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "";
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Fecha
-              </label>
-              <input
-                type="date"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                className="input-field text-xs sm:text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
-                Puntaje Pauta (1-100)
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={puntaje}
-                onChange={(e) => setPuntaje(e.target.value)}
-                placeholder="ej: 90"
-                className="input-field text-xs sm:text-sm"
-              />
-            </div>
-          </div>
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      chunksRef.current = [];
 
-          {/* Voice Note Section with Real-time Auto-Transcription */}
-          <div className="pt-2">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                🎙️ Nota de Voz (Transcripción Automática)
-              </label>
-              <span className="text-[10px] text-[#2d8a4e] font-bold">Whisper AI</span>
-            </div>
-            <VoiceRecorder
-              onSave={setVoiceNote}
-              onTranscribe={(text) => {
-                setTranscripcion((prev) => (prev ? prev + "\n" + text : text));
-              }}
-              existingNote={voiceNote}
-            />
-          </div>
+      mr.ondataavailable = e => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
 
-          {/* Written Observations Field (Populated by transcription) */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Observaciones Cualitativas Escritas
-              </label>
-              {transcripcion && (
-                <span className="text-[10px] text-[#2d8a4e] font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Transcripción insertada
-                </span>
-              )}
-            </div>
-            <textarea
-              value={transcripcion}
-              onChange={(e) => setTranscripcion(e.target.value)}
-              rows={4}
-              placeholder="El texto de la nota de voz se transcribirá y colocará automáticamente aquí..."
-              className="input-field resize-none text-xs sm:text-sm leading-relaxed"
-            />
-          </div>
+      // 3. Al detener la grabación: crear reproductor de audio y, si no hubo dictado en vivo, transcribir en backend
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
 
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn-secondary flex-1 text-xs font-bold py-2.5"
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="btn-primary flex-1 text-xs font-bold py-2.5"
-            >
-              Guardar Observación
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        // Si el navegador no transcribió en vivo (ej. Firefox o sin soporte Web Speech), usar el microservicio Python
+        if (!capturedViaLiveSpeechRef.current && blob.size > 500) {
+          await transcribirAudioEnServidor(blob);
+        }
+      };
 
-// ─── Main Evaluaciones Page ───────────────────────────────────────────────────
-export default function EvaluacionesPage() {
-  const [modalOpen, setModalOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [observaciones, setObservaciones] = useState<Observacion[]>([
-    {
-      id: 1,
-      titulo: "Observación Clase 1: Ecuaciones Lineales",
-      fecha: "2026-08-14",
-      estudiante: "Matías Silva Morales",
-      seccion: "1° Medio A",
-      puntaje: 92,
-      estado: "completada",
-      transcripcion:
-        "El estudiante demuestra un adecuado dominio didáctico al inicio de la sesión utilizando la balanza interactiva GeoGebra. Durante el trabajo en duplas los alumnos se mostraron participativos.",
-    },
-    {
-      id: 2,
-      titulo: "Observación Clase 2: Geometría y Teorema de Pitágoras",
-      fecha: "2026-08-11",
-      estudiante: "Camila Torres Pérez",
-      seccion: "8° Básico B",
-      puntaje: 88,
-      estado: "completada",
-      transcripcion:
-        "Buen uso de material concreto y fichas manipulativas. Se sugiere reforzar el momento de cierre con una síntesis más estructurada.",
-    },
-  ]);
+      // 4. Iniciar reconocimiento de voz en vivo del navegador (Chrome / Edge / Brave)
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = "es-CL"; // Español de Chile
+        recognition.continuous = true;
+        recognition.interimResults = true;
 
-  const handleAddObservacion = (obs: Observacion) => {
-    setObservaciones((prev) => [obs, ...prev]);
+        recognition.onresult = (event: any) => {
+          let interim = "";
+          let finalChunk = "";
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalChunk += transcript + " ";
+            } else {
+              interim += transcript;
+            }
+          }
+
+          if (finalChunk.trim()) {
+            capturedViaLiveSpeechRef.current = true;
+            setObservaciones(prev => {
+              const textoLimpio = finalChunk.trim();
+              return prev ? `${prev.trim()} ${textoLimpio}.` : `${textoLimpio}.`;
+            });
+          }
+          setLiveTranscript(interim);
+        };
+
+        recognition.onerror = () => {
+          // Si falla el dictado en vivo, el onstop del MediaRecorder usará el servidor Python automáticamente
+        };
+
+        try {
+          recognition.start();
+          recognitionRef.current = recognition;
+        } catch {}
+      }
+
+      mr.start(250); // Capturar bloques cada 250ms
+      setIsRecording(true);
+    } catch (err) {
+      setRecordingError("No se pudo acceder al micrófono. Verifica que hayas otorgado permisos en el navegador.");
+    }
   };
 
-  const filtered = observaciones.filter(
-    (o) =>
-      o.estudiante.toLowerCase().includes(search.toLowerCase()) ||
-      o.titulo.toLowerCase().includes(search.toLowerCase())
-  );
+  /** Detiene tanto el reconocimiento en vivo como la grabación del archivo de audio */
+  const stopRecording = () => {
+    setLiveTranscript("");
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  /**
+   * Envía el archivo de audio (Blob) al microservicio FastAPI (POST /voz/transcribir)
+   * donde FFmpeg lo normaliza a WAV 16kHz y SpeechRecognition / Whisper extrae el texto.
+   */
+  const transcribirAudioEnServidor = async (blob: Blob) => {
+    setIsTranscribiendo(true);
+    try {
+      const res = await evaluacionService.transcribirVoz(blob, "webm");
+      const texto: string = res.data?.texto || res.data?.transcripcion || "";
+      if (texto.trim()) {
+        setObservaciones(prev => prev ? `${prev}\n${texto}` : texto);
+      }
+    } catch (err) {
+      setRecordingError("No se pudo conectar con el servidor de transcripción en el puerto 8000.");
+    } finally {
+      setIsTranscribiendo(false);
+    }
+  };
+
+  /** Suma los puntajes asignados en los 7 criterios de la rúbrica (máximo 35 puntos) */
+  const calcularPuntajeTotal = () => {
+    const vals = Object.values(puntajes);
+    if (vals.length === 0) return 0;
+    return vals.reduce((a, b) => a + b, 0);
+  };
+
+  /** Envía la evaluación completa al Backend Spring Boot (POST /api/evaluaciones) */
+  const handleGuardar = async () => {
+    if (!titulo.trim()) { setError("Ingresa un título para la evaluación."); return; }
+    setGuardando(true);
+    setError("");
+    try {
+      const data = {
+        titulo,
+        fecha,
+        estudianteNombre: estudiante,
+        observaciones,
+        puntajes,
+        puntajeTotal: calcularPuntajeTotal(),
+        maxPuntaje: CRITERIOS_RUBRICA.length * 5,
+        observacionesDesdeVoz: Boolean(audioUrl || capturedViaLiveSpeechRef.current),
+        estado: "COMPLETADA"
+      };
+      await evaluacionService.create(data);
+      setGuardadoOk(true);
+      setTimeout(() => {
+        setModo("lista");
+        setGuardadoOk(false);
+        setTitulo("");
+        setEstudiante("");
+        setObservaciones("");
+        setPuntajes({});
+        setAudioUrl(null);
+        evaluacionService.getAll().then(r => setEvaluaciones(r.data || [])).catch(() => {});
+      }, 1200);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Error al guardar la evaluación. Verifica que el backend esté corriendo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  if (user?.rol !== "PROFESOR") {
+    return (
+      <AppLayout>
+        <div className="p-8 text-center">
+          <p className="text-gray-500">Esta sección solo está disponible para usuarios con rol PROFESOR.</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
-      <div className="p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200/80 pb-5">
+      <div className="p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
+        {/* Encabezado de la vista */}
+        <div className="flex items-center justify-between pb-5 border-b border-gray-200">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-bold mb-1.5">
-              <Mic className="w-3.5 h-3.5" />
-              Observaciones de Aula & Notas de Voz
-            </div>
-            <h1
-              className="text-3xl font-bold text-[#1e3a5f]"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
-              Evaluaciones de Práctica
+            <h1 className="text-2xl font-bold text-[#1e3a5f]" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Evaluaciones y Observaciones
             </h1>
-            <p className="text-gray-500 text-xs sm:text-sm mt-1">
-              Registro digital de observaciones presenciales en colegios con soporte para notas de voz transcritas por IA.
+            <p className="text-sm text-gray-500 mt-1">
+              Registra observaciones de clase en terreno con rúbrica digital y transcripción de nota de voz
             </p>
           </div>
-
-          <button
-            onClick={() => setModalOpen(true)}
-            className="btn-primary inline-flex items-center gap-2 text-xs font-bold py-2.5 px-4 shadow-md"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva Observación
-          </button>
-        </div>
-
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por estudiante o título de clase..."
-            className="input-field pl-10 text-xs sm:text-sm"
-          />
-        </div>
-
-        {/* List of Observations */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filtered.map((obs) => (
-            <div
-              key={obs.id}
-              className="card p-5 rounded-2xl border border-gray-200 hover:border-[#1e3a5f]/40 transition-all shadow-xs space-y-3 bg-white"
+          {modo === "lista" && (
+            <button
+              type="button"
+              onClick={() => { setModo("nueva"); setError(""); setGuardadoOk(false); }}
+              className="btn-primary text-xs py-2.5 px-4 font-bold flex items-center gap-1.5"
             >
-              <div className="flex items-start justify-between gap-2">
+              <Plus className="w-4 h-4" /> Nueva Evaluación
+            </button>
+          )}
+          {modo === "nueva" && (
+            <button
+              type="button"
+              onClick={() => setModo("lista")}
+              className="btn-secondary text-xs py-2.5 px-4 font-bold"
+            >
+              Cancelar
+            </button>
+          )}
+        </div>
+
+        {/* MODO LISTA: Historial de evaluaciones registradas */}
+        {modo === "lista" && (
+          <div>
+            {loading ? (
+              <div className="card rounded-2xl p-8 text-center text-sm text-gray-400">Cargando evaluaciones...</div>
+            ) : evaluaciones.length === 0 ? (
+              <div className="card rounded-2xl p-10 text-center border-dashed border-2 border-gray-200">
+                <FileText className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                <p className="font-semibold text-gray-700">No hay evaluaciones registradas</p>
+                <p className="text-xs text-gray-400 mt-1 mb-4">Registra tu primera observación de clase con nota de voz</p>
+                <button onClick={() => setModo("nueva")} className="btn-primary text-xs py-2 px-4 font-bold">
+                  Nueva Evaluación
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {evaluaciones.map((ev: any) => (
+                  <div key={ev.id} className="card rounded-2xl p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <FileText className="w-5 h-5 text-orange-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900 text-sm">{ev.titulo}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {ev.estudianteNombre && <><strong>{ev.estudianteNombre}</strong> · </>}
+                          {new Date(ev.fecha || ev.createdAt).toLocaleDateString("es-CL")}
+                        </p>
+                        {ev.puntajeTotal != null && (
+                          <p className="text-xs text-[#2d8a4e] font-semibold mt-1">
+                            Puntaje Rúbrica: {ev.puntajeTotal}/{ev.maxPuntaje || 35} pts
+                            {ev.notaFinal ? ` · Nota: ${ev.notaFinal}` : ""}
+                          </p>
+                        )}
+                        {ev.observaciones && (
+                          <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap">{ev.observaciones}</p>
+                        )}
+                      </div>
+                      <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-lg text-[10px] font-bold flex-shrink-0">
+                        {ev.estado || "COMPLETADA"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* MODO NUEVA EVALUACIÓN: Formulario con Rúbrica y Grabador de Voz */}
+        {modo === "nueva" && (
+          <div className="space-y-5">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+            {guardadoOk && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-green-700 font-semibold">Evaluación guardada exitosamente en la base de datos.</p>
+              </div>
+            )}
+
+            {/* 1. Datos generales de la sesión observada */}
+            <div className="card rounded-2xl p-6 space-y-4">
+              <p className="font-bold text-gray-900 text-sm border-b border-gray-100 pb-3">Datos de la Evaluación</p>
+              <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <h3 className="font-bold text-gray-900 text-sm">{obs.titulo}</h3>
-                  <p className="text-xs text-[#1e3a5f] font-semibold mt-0.5">
-                    {obs.estudiante} · {obs.seccion}
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Título de la Observación *</label>
+                  <input
+                    value={titulo}
+                    onChange={e => setTitulo(e.target.value)}
+                    className="input-field text-sm"
+                    placeholder="Ej: Observación de clase - Ecuaciones 8° Básico B"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Fecha</label>
+                  <input
+                    type="date"
+                    value={fecha}
+                    onChange={e => setFecha(e.target.value)}
+                    className="input-field text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Nombre del Estudiante en Práctica</label>
+                  <input
+                    value={estudiante}
+                    onChange={e => setEstudiante(e.target.value)}
+                    className="input-field text-sm"
+                    placeholder="Ej: Matías Silva Morales"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Rúbrica cuantitativa (7 criterios de 1 a 5 puntos) */}
+            <div className="card rounded-2xl p-6 space-y-4">
+              <p className="font-bold text-gray-900 text-sm border-b border-gray-100 pb-3">
+                Rúbrica de Evaluación (1 = Insuficiente / 5 = Excelente)
+              </p>
+              <div className="space-y-4">
+                {CRITERIOS_RUBRICA.map(c => (
+                  <div key={c.id} className="space-y-2">
+                    <div>
+                      <p className="text-xs font-bold text-gray-900">{c.nombre}</p>
+                      <p className="text-[10px] text-gray-500">{c.descripcion}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setPuntaje(c.id, n)}
+                          className={clsx(
+                            "w-10 h-10 rounded-xl font-bold text-sm transition-all border-2",
+                            puntajes[c.id] === n
+                              ? n <= 2 ? "bg-red-100 border-red-400 text-red-800"
+                                : n === 3 ? "bg-yellow-100 border-yellow-400 text-yellow-800"
+                                : "bg-green-100 border-green-400 text-green-800"
+                              : "border-gray-200 text-gray-400 hover:border-gray-400"
+                          )}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                      <span className="text-xs text-gray-400 ml-2">
+                        {puntajes[c.id] ? ["", "Insuficiente", "Básico", "Adecuado", "Bueno", "Excelente"][puntajes[c.id]] : "Sin puntaje"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-[#1e3a5f]/5 rounded-xl p-3 flex items-center justify-between">
+                <p className="text-sm font-bold text-gray-900">Puntaje Total Acumulado</p>
+                <p className="text-lg font-bold text-[#1e3a5f]">{calcularPuntajeTotal()} / {CRITERIOS_RUBRICA.length * 5}</p>
+              </div>
+            </div>
+
+            {/* 3. Observaciones Cualitativas + Grabación/Transcripción de Nota de Voz */}
+            <div className="card rounded-2xl p-6 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <p className="font-bold text-gray-900 text-sm">Observaciones Cualitativas (Nota de Voz a Texto)</p>
+                  <p className="text-[11px] text-gray-500">
+                    Presiona el botón y habla al micrófono: tu voz se transcribirá automáticamente al español.
                   </p>
                 </div>
-                {obs.puntaje && (
-                  <span className="text-xs font-bold bg-green-50 text-[#2d8a4e] border border-green-200 px-2.5 py-1 rounded-xl">
-                    {obs.puntaje} / 100 pts
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {isTranscribiendo && (
+                    <p className="text-xs text-blue-600 font-semibold animate-pulse">
+                      Procesando audio en servidor...
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={isRecording ? stopRecording : startRecording}
+                    disabled={isTranscribiendo}
+                    className={clsx(
+                      "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs",
+                      isRecording
+                        ? "bg-red-600 text-white border-2 border-red-700 animate-pulse"
+                        : "bg-green-50 text-green-800 border-2 border-green-300 hover:border-green-500"
+                    )}
+                  >
+                    {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    {isRecording ? "Detener grabación" : "Grabar nota de voz"}
+                  </button>
+                </div>
               </div>
 
-              {obs.transcripcion && (
-                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 text-xs text-gray-600 leading-relaxed">
-                  <p className="font-semibold text-gray-700 mb-1 flex items-center gap-1">
-                    <Mic className="w-3 h-3 text-orange-600" /> Observaciones cualitativas:
-                  </p>
-                  "{obs.transcripcion}"
+              {/* Indicador visual en tiempo real mientras el docente está hablando */}
+              {isRecording && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-3">
+                  <span className="w-3 h-3 rounded-full bg-red-600 animate-ping flex-shrink-0" />
+                  <div className="text-xs text-red-900">
+                    <span className="font-bold">Grabando y transcribiendo en vivo (es-CL): </span>
+                    <span className="italic">{liveTranscript || "Habla ahora frente al micrófono..."}</span>
+                  </div>
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-[11px] text-gray-400">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3" /> {obs.fecha}
-                </span>
-                <span className="font-semibold text-[#2d8a4e] flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Pauta Completada
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+              {/* Reproductor de la nota de voz grabada */}
+              {audioUrl && !isRecording && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-[#1e3a5f]">
+                    <Volume2 className="w-4 h-4 text-blue-600" />
+                    Audio de la observación registrado:
+                  </div>
+                  <audio controls src={audioUrl} className="h-8 w-full sm:w-72" />
+                </div>
+              )}
 
-        {modalOpen && (
-          <ObservacionModal
-            onClose={() => setModalOpen(false)}
-            onSave={handleAddObservacion}
-          />
+              {recordingError && <p className="text-xs text-red-600 font-medium">{recordingError}</p>}
+
+              <textarea
+                value={observaciones}
+                onChange={e => setObservaciones(e.target.value)}
+                rows={6}
+                placeholder="Escribe tus observaciones aquí, o presiona 'Grabar nota de voz' para dictar tus comentarios al terminar la clase..."
+                className="input-field resize-none text-sm leading-relaxed"
+              />
+            </div>
+
+            {/* Botón de guardado */}
+            <button
+              type="button"
+              onClick={handleGuardar}
+              disabled={guardando}
+              className="btn-primary w-full py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-md"
+            >
+              <Save className="w-4 h-4" />
+              {guardando ? "Guardando evaluación..." : "Guardar Evaluación"}
+            </button>
+          </div>
         )}
       </div>
     </AppLayout>

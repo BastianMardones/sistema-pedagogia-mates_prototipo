@@ -58,7 +58,7 @@ public class Usuario implements UserDetails {
     }
 
     public enum Rol {
-        ADMIN, PROFESOR, DIRECTIVO
+        ESTUDIANTE, PROFESOR
     }
 
     // UserDetails implementation

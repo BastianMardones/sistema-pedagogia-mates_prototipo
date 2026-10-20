@@ -36,6 +36,7 @@ class PlanificacionAnalysisResult(BaseModel):
     elementos_faltantes: List[ElementoFaltante] = []
     mensaje: str
     primera_pregunta: Optional[PreguntaReflexion] = None
+    total_preguntas: int = 5
     texto_extraido: Optional[str] = None  # Para debugging/registro
 
 

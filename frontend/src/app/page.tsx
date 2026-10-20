@@ -1,156 +1,186 @@
-"use client";
+﻿"use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { GraduationCap, Mail, Lock, Eye, EyeOff, AlertCircle, Sparkles, BookOpen, UserCheck, HelpCircle } from "lucide-react";
 import { authService } from "@/lib/api";
+import { GraduationCap, Eye, EyeOff, BookOpen, Users, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@pedagogia.cl");
+  const [email, setEmail] = useState("estudiante@pedagogia.cl");
   const [password, setPassword] = useState("password");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [showInfoModal, setShowInfoModal] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) router.push("/dashboard");
+  }, [router]);
+
+  const handleLogin = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setLoading(true);
-
+    setError("");
     try {
-      const response = await authService.login(email, password);
-      const data = response.data;
-
-      // Store token and user info
-      localStorage.setItem("token", data.token);
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: data.id,
-          nombre: data.nombre,
-          apellido: data.apellido,
-          email: data.email,
-          rol: data.rol,
-        })
-      );
-
-      router.push("/inicio");
+      const res = await authService.login(email, password);
+      const data = res.data;
+      localStorage.setItem("token", data.token || data.accessToken);
+      localStorage.setItem("user", JSON.stringify({
+        id: data.id,
+        nombre: data.nombre,
+        apellido: data.apellido,
+        email: data.email,
+        rol: data.rol,
+      }));
+      router.push("/dashboard");
     } catch (err: any) {
-      const msg =
+      setError(
         err?.response?.data?.message ||
         err?.response?.data?.error ||
-        "Credenciales incorrectas. Verifique que el Backend esté corriendo en el puerto 8081.";
-      setError(msg);
+        "Credenciales incorrectas. Verifique que el Backend este corriendo en el puerto 8081."
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const fillCredentials = (roleEmail: string) => {
-    setEmail(roleEmail);
+  const quickLogin = (rol: "ESTUDIANTE" | "PROFESOR") => {
+    if (rol === "ESTUDIANTE") {
+      setEmail("estudiante@pedagogia.cl");
+    } else {
+      setEmail("profesor@pedagogia.cl");
+    }
     setPassword("password");
-    setError("");
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1e3a5f] via-[#2a4f7c] to-[#152b47] flex items-center justify-center p-4">
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-white/5 rounded-full" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-white/5 rounded-full" />
-        <div className="absolute top-1/2 left-1/4 w-64 h-64 bg-[#2d8a4e]/10 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white/10 rounded-2xl mb-4 backdrop-blur shadow-inner">
-            <GraduationCap className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-1 tracking-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
-            SGP Matemáticas
-          </h1>
-          <p className="text-blue-200 text-sm font-medium">
-            Sistema de Gestión Pedagógica & Prácticas
-          </p>
+    <div className="min-h-screen flex">
+      {/* Left panel - decorative */}
+      <div
+        className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12"
+        style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #2d8a4e 100%)" }}
+      >
+        <div className="flex items-center gap-3">
+          <GraduationCap className="w-8 h-8 text-white" />
+          <span className="text-white font-bold text-xl">SGP Matematicas</span>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-3xl shadow-2xl p-7 sm:p-8 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-800">
-              Iniciar Sesión
-            </h2>
-            <button
-              onClick={() => setShowInfoModal(true)}
-              className="text-xs text-[#1e3a5f] hover:underline font-semibold flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-lg"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              Ver Contexto
-            </button>
+        <div className="space-y-6">
+          <h1 className="text-4xl font-bold text-white leading-tight" style={{ fontFamily: "'Playfair Display', serif" }}>
+            Sistema de Gestion de Practicas Pedagogicas
+          </h1>
+          <p className="text-blue-200 text-base leading-relaxed">
+            Plataforma centralizada para el portafolio de estudiantes en practica, retroalimentacion inteligente de planificaciones y digitalizacion de evaluaciones docentes.
+          </p>
+          <div className="space-y-3">
+            {[
+              { icon: BookOpen, text: "Sube y analiza planificaciones con IA (Ciclo Inicial a Profesional)" },
+              { icon: Sparkles, text: "Chatbot pedagogico con verificacion de DUA, NEET/NEEP y 3 momentos" },
+              { icon: Users, text: "Profesor revisa, aprueba o rechaza con comentarios escritos" },
+            ].map((item) => (
+              <div key={item.text} className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <item.icon className="w-4 h-4 text-white" />
+                </div>
+                <p className="text-blue-100 text-sm">{item.text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="inline-block px-3 py-1.5 bg-yellow-400/20 border border-yellow-400/30 rounded-lg">
+            <p className="text-yellow-200 text-xs font-semibold">Acreditacion CNA 2030 — Evidencia Longitudinal</p>
+          </div>
+        </div>
+
+        <p className="text-blue-300/60 text-xs">Pedagogia en Matematicas · Universidad · Sprint 1</p>
+      </div>
+
+      {/* Right panel - login form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
+        <div className="w-full max-w-md space-y-8">
+          {/* Mobile logo */}
+          <div className="lg:hidden flex items-center gap-3 mb-4">
+            <GraduationCap className="w-8 h-8 text-[#1e3a5f]" />
+            <span className="font-bold text-xl text-[#1e3a5f]">SGP Matematicas</span>
           </div>
 
-          {error && (
-            <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-xs leading-relaxed">
-              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Iniciar Sesion</h2>
+            <p className="text-gray-500 text-sm mt-1">Accede a tu cuenta de practica pedagogica</p>
+          </div>
 
+          {/* Quick access buttons */}
+          <div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Acceso rapido de prueba</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => quickLogin("ESTUDIANTE")}
+                className="flex items-center gap-2.5 p-3 bg-white border-2 border-blue-100 hover:border-[#1e3a5f] rounded-xl text-left transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-blue-50 group-hover:bg-[#1e3a5f]/10 flex items-center justify-center flex-shrink-0">
+                  <BookOpen className="w-4 h-4 text-[#1e3a5f]" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-900">Estudiante</p>
+                  <p className="text-[10px] text-gray-400">Matias Silva</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => quickLogin("PROFESOR")}
+                className="flex items-center gap-2.5 p-3 bg-white border-2 border-green-100 hover:border-[#2d8a4e] rounded-xl text-left transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-green-50 group-hover:bg-[#2d8a4e]/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="w-4 h-4 text-[#2d8a4e]" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-900">Profesor</p>
+                  <p className="text-[10px] text-gray-400">Carlos Mendoza</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Login form */}
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* Email */}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5"
-              >
-                Correo electrónico
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="correo@pedagogia.cl"
-                  className="input-field pl-10 text-sm"
-                />
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+                {error}
               </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                Correo electronico
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-field text-sm"
+                required
+              />
             </div>
 
-            {/* Password */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5"
-              >
-                Contraseña
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                Contrasena
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
-                  id="password"
                   type={showPassword ? "text" : "password"}
-                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="input-field pl-10 pr-10 text-sm"
+                  className="input-field pr-12 text-sm"
+                  required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
@@ -158,93 +188,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-primary w-full py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all"
+              className="btn-primary w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
             >
               {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Conectando...
-                </>
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Verificando...</>
               ) : (
                 "Ingresar al sistema"
               )}
             </button>
           </form>
-
-          {/* Quick Access Roles */}
-          <div className="pt-2 space-y-2.5">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">
-              Cuentas rápidas de prueba
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => fillCredentials("admin@pedagogia.cl")}
-                className="px-2 py-1.5 rounded-lg border border-gray-200 hover:border-[#1e3a5f] hover:bg-blue-50 text-[11px] font-semibold text-gray-700 transition-colors"
-              >
-                🏛️ Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials("profesor@pedagogia.cl")}
-                className="px-2 py-1.5 rounded-lg border border-gray-200 hover:border-[#1e3a5f] hover:bg-blue-50 text-[11px] font-semibold text-gray-700 transition-colors"
-              >
-                👨‍🏫 Profesor
-              </button>
-              <button
-                type="button"
-                onClick={() => fillCredentials("coordinador@pedagogia.cl")}
-                className="px-2 py-1.5 rounded-lg border border-gray-200 hover:border-[#1e3a5f] hover:bg-blue-50 text-[11px] font-semibold text-gray-700 transition-colors"
-              >
-                📋 Directivo
-              </button>
-            </div>
-          </div>
         </div>
-
-        {/* Footer */}
-        <p className="text-center text-blue-200/60 text-xs mt-6">
-          Pedagogía en Matemáticas · Acreditación CNA 2030
-        </p>
       </div>
-
-      {/* Info Modal */}
-      {showInfoModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-7 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
-              <div className="w-10 h-10 bg-blue-50 text-[#1e3a5f] rounded-xl flex items-center justify-center font-bold">
-                <GraduationCap className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-base">
-                  Sobre SGP Matemáticas
-                </h3>
-                <p className="text-xs text-gray-500">Contexto y Requerimientos del Cliente</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-xs sm:text-sm text-gray-600 leading-relaxed max-h-80 overflow-y-auto pr-1">
-              <p>
-                <strong>🎯 Meta Principal:</strong> Acreditación CNA al 2030 (Estándar Nivel 3). Exige monitoreo longitudinal de las evidencias de las 6 asignaturas de práctica.
-              </p>
-              <p>
-                <strong>🤖 Chatbot de Planificación:</strong> Automatiza la retroalimentación de las 3 planificaciones semanales que hacen los estudiantes, exigiendo responder 5 preguntas de reflexión pedagógica antes de emitir sugerencias.
-              </p>
-              <p>
-                <strong>🎙️ Notas de Voz para Observaciones:</strong> Permite que los tutores graben audios en el aula que se transcriben automáticamente a las pautas de evaluación.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setShowInfoModal(false)}
-              className="btn-primary w-full py-2.5 text-xs font-bold"
-            >
-              Entendido, volver al inicio
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

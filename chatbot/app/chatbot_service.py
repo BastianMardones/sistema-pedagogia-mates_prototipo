@@ -27,48 +27,86 @@ from app.models import (
 SESIONES_DIR = Path("data/sesiones")
 SESIONES_DIR.mkdir(parents=True, exist_ok=True)
 
-SYSTEM_PROMPT = """Eres un tutor pedagógico experto en Pedagogía en Matemáticas con 15 años de experiencia
-formando profesores. Tu rol es retroalimentar las planificaciones de clase de estudiantes en práctica.
+SYSTEM_PROMPT = """Eres un tutor pedagogico experto en Pedagogia en Matematicas con 15 anos de experiencia
+formando profesores en practica profesional. Tu rol es retroalimentar las planificaciones de clase
+de estudiantes que se encuentran en su periodo de practica.
 
-PRINCIPIOS:
-1. NO haces la planificación por el estudiante — eres un espejo que les hace reflexionar
-2. Tus preguntas deben provocar pensamiento crítico sobre decisiones didácticas
-3. La retroalimentación debe ser constructiva, específica y accionable
-4. Evalúa con rigor los 3 momentos, DUA e inclusión PIE."""
+La planificacion real de practica profesional en Pedagogia en Matematicas debe incluir:
+- Equipo de Co-Ensenanza (profesor colaborador del colegio + docente en practica)
+- Caracterizacion del Curso: N de estudiantes con NEET (con diagnosticos como DEA) y NEEP (TEA, DIL),
+  estilos de aprendizaje (% visual, kinestetivo, auditivo), otros datos relevantes del grupo
+- Datos generales: Ano, Periodo, Asignatura, Curso
+- Unidad o eje tematico
+- Objetivo de Aprendizaje (OA) del MINEDUC con su numero (ej: OA16 - descripcion)
+- Indicadores de Evaluacion
+- Objetivo de Aprendizaje Transversal
+- Objetivo de la Clase (lo concreto que los alumnos logran HOY)
+- 3 Momentos con tiempos: Inicio (15 min) / Desarrollo (60 min) / Cierre
+- Diversificacion de la Ensenanza (DUA): columna paralela a cada momento con el principio DUA
+  numerado y la estrategia aplicada (ej: 7.2, 1.4, 2.2, etc.)
+- Evaluacion de la clase (instrumento o rubrica)
 
-PROMPT_VERIFICACION = """Analiza esta planificación de clase y determina si tiene los elementos mínimos obligatorios.
+PRINCIPIOS PEDAGOGICOS:
+1. NO haces la planificacion por el estudiante - eres un espejo que les hace reflexionar
+2. Tus preguntas deben provocar pensamiento critico sobre decisiones didacticas especificas
+3. La retroalimentacion debe ser constructiva, especifica y accionable
+4. Evalua con rigor la coherencia entre OA, los 3 momentos y el DUA aplicado
+5. Presta especial atencion a como el docente atiende la diversidad (NEET/NEEP)"""
 
-PLANIFICACIÓN:
+PROMPT_VERIFICACION = """Analiza esta planificacion de clase de Pedagogia en Matematicas y determina
+si contiene los elementos MINIMOS OBLIGATORIOS para ser procesada.
+
+ELEMENTOS MINIMOS A VERIFICAR:
+1. Objetivo de Aprendizaje (OA) del MINEDUC declarado con su numero
+2. Los 3 momentos de la clase (Inicio, Desarrollo, Cierre) con tiempos
+3. Al menos 1 principio DUA declarado (ya sea por nombre o numero de estrategia)
+4. Caracterizacion del curso (mencion de NEET, NEEP o necesidades educativas del grupo)
+5. Evaluacion de la clase (instrumento, rubrica o descripcion de como se evaluara)
+
+PLANIFICACION A ANALIZAR:
 {planificacion}
 
 NIVEL DEL ESTUDIANTE: {nivel}
-Responde ÚNICAMENTE con JSON válido:
+
+Responde UNICAMENTE con JSON valido:
 {{
   "pasa": true/false,
   "elementos_faltantes": [
-    {{"elemento": "nombre_elemento", "descripcion": "qué falta", "critico": true}}
+    {{"elemento": "nombre_del_elemento", "descripcion": "descripcion de que falta exactamente", "critico": true}}
   ],
-  "resumen": "1-2 oraciones sobre el estado general",
-  "num_preguntas_sugeridas": 4
-}}"""
+  "resumen": "2-3 oraciones sobre el estado general de la planificacion",
+  "num_preguntas_sugeridas": 3
+}}
 
-PROMPT_GENERAR_PREGUNTAS = """Analiza esta planificación de matemáticas y genera preguntas de reflexión para el estudiante.
+CRITERIO: Si falta cualquier elemento critico (OA, 3 momentos o DUA), "pasa" debe ser false.
+Si tiene todos los elementos basicos, "pasa" es true y num_preguntas_sugeridas entre 1 y 5 segun calidad."""
 
-PLANIFICACIÓN:
+PROMPT_GENERAR_PREGUNTAS = """Analiza esta planificacion de Matematicas (nivel: {nivel}) y genera preguntas
+de reflexion pedagogica alineadas a los campos especificos de la pauta institucional.
+
+PLANIFICACION:
 {planificacion}
 
-NIVEL: {nivel}
-Genera {num_preguntas} preguntas de reflexión pedagógica.
-Responde ÚNICAMENTE con JSON válido:
+Genera {num_preguntas} preguntas de reflexion. Las preguntas deben enfocarse en estos aspectos en orden
+de prioridad:
+1. COHERENCIA OA: Coherencia entre el OA declarado y las actividades del Desarrollo
+2. INICIO: Como el Momento de Inicio activa los conocimientos previos de los alumnos
+3. INCLUSION NEET/NEEP: Estrategia especifica del Desarrollo para los estudiantes con NEET/NEEP identificados
+4. DUA: Que principio DUA especifico se aplico y en que momento exacto de la clase
+5. CIERRE Y EVALUACION: Como el Cierre evidencia el logro del Objetivo de la Clase
+
+Responde UNICAMENTE con JSON valido:
 {{
   "preguntas": [
     {{
       "numero": 1,
-      "pregunta": "texto de la pregunta contextualizada",
-      "aspecto": "objetivo|inicio|desarrollo|cierre|evaluacion|inclusion|dificultades"
+      "pregunta": "pregunta especifica y contextualizada con datos de la propia planificacion",
+      "aspecto": "coherencia_oa|inicio|inclusion_neet_neep|dua|cierre_evaluacion"
     }}
   ]
 }}"""
+
+
 
 PROMPT_VALIDAR_RESPUESTA = """Evalúa si la respuesta del estudiante es válida para esta pregunta de reflexión pedagógica.
 
@@ -78,67 +116,80 @@ RESPUESTA DEL ESTUDIANTE: "{respuesta}"
 Responde ÚNICAMENTE con JSON válido:
 {{"valida": true/false, "razon": "explicación de 1 oración"}}"""
 
-PROMPT_RETROALIMENTACION = """Genera retroalimentación pedagógica estructurada.
+PROMPT_RETROALIMENTACION = """Genera retroalimentacion pedagogica estructurada basada en los campos reales
+de la pauta de planificacion de practica profesional en Pedagogia en Matematicas.
 
-PLANIFICACIÓN ORIGINAL:
+PLANIFICACION ORIGINAL:
 {planificacion}
 
-DIÁLOGO:
+DIALOGO DE REFLEXION (preguntas de la IA y respuestas del estudiante):
 {dialogo}
 
-NIVEL: {nivel}
-Responde ÚNICAMENTE con JSON válido:
+NIVEL DEL ESTUDIANTE: {nivel}
+
+Genera retroalimentacion organizada por las secciones de la pauta institucional real.
+Responde UNICAMENTE con JSON valido:
 {{
-  "diagnostico_general": "diagnóstico general de 3 oraciones",
+  "diagnostico_general": "diagnostico de 3 oraciones sobre la calidad global de la planificacion, tomando en cuenta las respuestas reflexivas del estudiante",
   "nivel_planificacion": "muy_buena|buena|regular|insuficiente",
   "secciones": [
     {{
-      "seccion": "Objetivo de Aprendizaje",
+      "seccion": "Caracterizacion del Curso y Contextualizacion",
       "evaluacion": "excelente|buena|mejorar|insuficiente",
-      "fortalezas": ["fortaleza específica"],
-      "areas_mejora": ["área de mejora"],
-      "sugerencias": ["acción concreta"]
+      "fortalezas": ["aspecto especifico que esta bien"],
+      "areas_mejora": ["aspecto que debe mejorar"],
+      "sugerencias": ["accion concreta a implementar"]
     }},
     {{
-      "seccion": "Inicio de la clase (15-20 min)",
-      "evaluacion": "buena",
+      "seccion": "Objetivo de Aprendizaje (OA) y Coherencia",
+      "evaluacion": "excelente|buena|mejorar|insuficiente",
       "fortalezas": ["..."],
       "areas_mejora": ["..."],
       "sugerencias": ["..."]
     }},
     {{
-      "seccion": "Desarrollo y Trabajo en Duplas (50-60 min)",
-      "evaluacion": "buena",
+      "seccion": "Momento de Inicio (activacion y rutina de clase)",
+      "evaluacion": "excelente|buena|mejorar|insuficiente",
       "fortalezas": ["..."],
       "areas_mejora": ["..."],
       "sugerencias": ["..."]
     }},
     {{
-      "seccion": "Cierre y Ticket de Salida (10-15 min)",
-      "evaluacion": "buena",
+      "seccion": "Momento de Desarrollo (estrategia pedagogica y atencion a diversidad)",
+      "evaluacion": "excelente|buena|mejorar|insuficiente",
       "fortalezas": ["..."],
       "areas_mejora": ["..."],
       "sugerencias": ["..."]
     }},
     {{
-      "seccion": "Diseño Universal para el Aprendizaje (DUA)",
-      "evaluacion": "buena",
+      "seccion": "Momento de Cierre (sintesis y evaluacion formativa)",
+      "evaluacion": "excelente|buena|mejorar|insuficiente",
       "fortalezas": ["..."],
       "areas_mejora": ["..."],
       "sugerencias": ["..."]
     }},
     {{
-      "seccion": "Atención a la Diversidad e Inclusión (PIE)",
-      "evaluacion": "buena",
+      "seccion": "Diversificacion de la Ensenanza (DUA por momento)",
+      "evaluacion": "excelente|buena|mejorar|insuficiente",
+      "fortalezas": ["..."],
+      "areas_mejora": ["..."],
+      "sugerencias": ["..."]
+    }},
+    {{
+      "seccion": "Atencion a Estudiantes con NEET y NEEP",
+      "evaluacion": "excelente|buena|mejorar|insuficiente",
       "fortalezas": ["..."],
       "areas_mejora": ["..."],
       "sugerencias": ["..."]
     }}
   ],
-  "recomendaciones_prioritarias": ["máximo 3 acciones"],
+  "recomendaciones_prioritarias": ["maximo 3 acciones concretas para la proxima planificacion"],
   "puede_ir_al_colegio": true,
-  "observaciones_para_profesor": "resumen para el profesor de práctica"
+  "observaciones_para_profesor": "resumen de 2-3 oraciones para el profesor tutor sobre el desempeno del estudiante en esta planificacion"
 }}"""
+
+
+
 
 
 class ChatbotService:
@@ -214,133 +265,214 @@ class ChatbotService:
     def _pedagogical_verify(self, texto: str, nivel: str) -> Dict[str, Any]:
         t = texto.lower()
         faltantes = []
-        
-        if "objetivo" not in t and "oa" not in t:
-            faltantes.append(ElementoFaltante(elemento="Objetivo de Aprendizaje", descripcion="No se explicita el OA de la clase.", critico=True))
-        if "inicio" not in t:
-            faltantes.append(ElementoFaltante(elemento="Momento de Inicio", descripcion="Falta la activación de conocimientos previos.", critico=True))
-        if "desarrollo" not in t:
-            faltantes.append(ElementoFaltante(elemento="Momento de Desarrollo", descripcion="Falta la secuencia didáctica de la clase.", critico=True))
-        if "cierre" not in t:
-            faltantes.append(ElementoFaltante(elemento="Momento de Cierre", descripcion="Falta la síntesis y evaluación formativa.", critico=True))
 
-        pasa = len(faltantes) == 0
+        # 1. OA del MINEDUC
+        if not any(kw in t for kw in ["objetivo de aprendizaje", "oa ", "oa1", "oa2", "oa3", "oa4", "oa5",
+                                       "oa6", "oa7", "oa8", "oa9", "oa10", "oa11", "oa12", "oa13",
+                                       "oa14", "oa15", "oa16", "oa17", "oa18", "oa19", "oa20"]):
+            faltantes.append(ElementoFaltante(
+                elemento="Objetivo de Aprendizaje (OA) del MINEDUC",
+                descripcion="No se encuentra el OA del MINEDUC con su numero. Debe declarar el OA con su numero oficial (ej: OA16).",
+                critico=True
+            ))
+
+        # 2. Los 3 momentos
+        if "inicio" not in t:
+            faltantes.append(ElementoFaltante(
+                elemento="Momento de Inicio",
+                descripcion="Falta el Momento de Inicio de la clase. Debe incluir la activacion de conocimientos previos y la rutina de inicio.",
+                critico=True
+            ))
+        if "desarrollo" not in t:
+            faltantes.append(ElementoFaltante(
+                elemento="Momento de Desarrollo",
+                descripcion="Falta el Momento de Desarrollo. Debe incluir las actividades principales de la clase.",
+                critico=True
+            ))
+        if "cierre" not in t:
+            faltantes.append(ElementoFaltante(
+                elemento="Momento de Cierre",
+                descripcion="Falta el Momento de Cierre. Debe incluir la sintesis y la evaluacion formativa.",
+                critico=True
+            ))
+
+        # 3. DUA (al menos 1 principio)
+        if not any(kw in t for kw in ["dua", "diversificacion", "diversificación", "principio 1", "principio 2", "principio 3", "7.1", "7.2", "1.1", "1.2", "1.4", "2.1", "2.2", "3.1"]):
+            faltantes.append(ElementoFaltante(
+                elemento="Diversificacion de la Ensenanza (DUA)",
+                descripcion="No se encuentran principios DUA declarados. Cada momento de la clase debe incluir al menos un principio o estrategia DUA numerada (ej: Pauta 1.2, 2.1, 7.2).",
+                critico=True
+            ))
+
+        # 4. Caracterizacion del curso (NEET/NEEP)
+        if not any(kw in t for kw in ["neet", "neep", "necesidades educativas", "dea", "tea", "dil", "diagnostico",
+                                       "estilos de aprendizaje", "visual", "auditivo"]):
+            faltantes.append(ElementoFaltante(
+                elemento="Caracterizacion del Curso (PIE / NEET / NEEP)",
+                descripcion="No se declara la caracterizacion del curso (estudiantes con NEET/NEEP, diagnosticos DEA/TEA/DIL ni porcentajes de estilos de aprendizaje).",
+                critico=False
+            ))
+
+        # 5. Evaluacion de la clase
+        if not any(kw in t for kw in ["evaluacion", "evaluación", "rubrica", "rúbrica", "instrumento", "lista de cotejo", "ticket de salida", "escala de apreciacion"]):
+            faltantes.append(ElementoFaltante(
+                elemento="Instrumento de Evaluacion de la Clase",
+                descripcion="No se especifica como se evaluara el logro del objetivo (rubrica, lista de cotejo o ticket de salida).",
+                critico=False
+            ))
+
+        pasa = not any(f.critico for f in faltantes)
+        num_preguntas = max(1, min(5, 2 + len(faltantes)))
+
         return {
             "pasa": pasa,
             "elementos_faltantes": faltantes,
-            "resumen": "Estructura pedagógica verificada correctamente." if pasa else "Faltan secciones requeridas en el documento."
+            "resumen": "La planificacion cumple con la estructura minima de la pauta institucional." if pasa
+                       else f"Se detectaron {len(faltantes)} observaciones en la pauta ({sum(1 for f in faltantes if f.critico)} elementos obligatorios criticos ausentes).",
+            "num_preguntas_sugeridas": num_preguntas if pasa else 0
         }
 
     def _pedagogical_generate_questions(self, texto: str, nivel: str) -> List[PreguntaReflexion]:
-        return [
+        t = texto.lower()
+
+        # Extraer datos del contexto para personalizar preguntas
+        tiene_neet = any(kw in t for kw in ["neet", "dea", "dislexia"])
+        tiene_neep = any(kw in t for kw in ["neep", "tea", "dil"])
+        tiene_dua_especifico = any(f"7.{i}" in t or f"1.{i}" in t or f"2.{i}" in t for i in range(1, 10))
+
+        preguntas = [
             PreguntaReflexion(
                 numero=1,
-                aspecto="Objetivo y Habilidades",
-                pregunta="En tu objetivo planteas modelar y resolver problemas. ¿Cómo te asegurarás durante el desarrollo de que los estudiantes no solo apliquen un algoritmo mecánico, sino que comprendan el significado de la igualdad algebraica?"
+                aspecto="coherencia_oa",
+                pregunta="En tu planificacion declaras un OA del MINEDUC. Mirando el Momento de Desarrollo que disenaste, explica con un ejemplo concreto como las actividades propuestas permiten que los estudiantes demuestren el logro de ese OA especifico."
             ),
             PreguntaReflexion(
                 numero=2,
-                aspecto="DUA - Representación y Expresión",
-                pregunta="Planteas el uso de la balanza GeoGebra en el inicio. ¿Qué estrategia alternativa tienes prevista si algún estudiante presenta dificultades para relacionar la balanza visual con los términos algebraicos abstractos?"
+                aspecto="inicio",
+                pregunta="En el Momento de Inicio propones una actividad de entrada. Describe como esa actividad activa los conocimientos previos de los estudiantes y como conecta con el Objetivo de la Clase de esta sesion."
             ),
             PreguntaReflexion(
                 numero=3,
-                aspecto="Gestión del Aula y Trabajo en Duplas",
-                pregunta="Durante los 25 minutos de trabajo en duplas, ¿qué rol específico asumirá el profesor en práctica para monitorear el progreso y evitar que un solo integrante monopolice la resolución de la guía?"
+                aspecto="inclusion_neet_neep",
+                pregunta=f"{'Mencionas estudiantes con NEET y NEEP en la caracterizacion del curso.' if (tiene_neet or tiene_neep) else 'La caracterizacion del grupo es importante.'} Describe una estrategia CONCRETA que aplicaras en el Momento de Desarrollo para atender a los estudiantes que presentan mayores dificultades de aprendizaje en esta clase."
             ),
             PreguntaReflexion(
                 numero=4,
-                aspecto="Evaluación Formativa y Cierre",
-                pregunta="En el cierre consideras un Ticket de Salida de 2 ejercicios. ¿Qué criterio cuantitativo o cualitativo utilizarás para determinar si la clase logró su objetivo antes de dar por finalizada la sesión?"
+                aspecto="dua",
+                pregunta=f"{'Declares principios DUA en tu planificacion.' if tiene_dua_especifico else 'El DUA es fundamental en la practica profesional.'} Elige el principio DUA que consideras mas relevante para esta clase y explica en que momento especifico (Inicio, Desarrollo o Cierre) lo aplicaras y como lo implementaras concretamente."
+            ),
+            PreguntaReflexion(
+                numero=5,
+                aspecto="cierre_evaluacion",
+                pregunta="En el Momento de Cierre de tu clase: describe que evidencia concreta utilizaras para determinar si los estudiantes lograron el Objetivo de la Clase. Como sabras, al terminar la clase, si fue exitosa?"
             ),
         ]
+        return preguntas
 
     def _pedagogical_validate_response(self, respuesta: str) -> Dict[str, Any]:
         words = respuesta.strip().split()
-        if len(words) < 6:
-            return {"valida": False, "razon": "Tu respuesta es muy breve. Por favor fundamenta con mayor detalle tu decisión pedagógica."}
-        evasivas = ["no se", "no sé", "nose", "ok", "lo cambiare", "bien", "nada"]
+        if len(words) < 8:
+            return {
+                "valida": False,
+                "razon": "Tu respuesta es muy breve. Fundamenta con mayor detalle tu decision pedagogica y como la implementaras en el aula."
+            }
+        evasivas = ["no se", "no sé", "nose", "ok", "lo cambiare", "bien", "nada", "no lo pense", "igual"]
         if respuesta.strip().lower() in evasivas:
-            return {"valida": False, "razon": "Por favor reflexiona sobre la estrategia concreta que aplicarás en la sala de clases."}
-        return {"valida": True, "razon": "Respuesta reflexiva y bien contextualizada."}
+            return {
+                "valida": False,
+                "razon": "Por favor reflexiona sobre la estrategia concreta que aplicaras en la sala de clases con TUS estudiantes."
+            }
+        return {"valida": True, "razon": "Respuesta reflexiva con suficiente fundamentacion pedagogica."}
 
     def _pedagogical_generate_feedback(self, sesion: ConversationSession) -> RetroalimentacionFinal:
         secciones = [
             RetroalimentacionSeccion(
-                seccion="Objetivo de Aprendizaje",
-                evaluacion="excelente",
-                fortalezas=[
-                    "El objetivo está claramente formulado, observable y alineado con las Bases Curriculares del MINEDUC.",
-                    "Explicitación de habilidad cognitiva (Modelar y Aplicar) adecuada para 1° Medio."
-                ],
-                areas_mejora=["Aclarar en el objetivo el contexto específico donde los alumnos aplicarán las ecuaciones."],
-                sugerencias=["Escribir el objetivo en la pizarra con lenguaje cercano al iniciar la sesión."]
-            ),
-            RetroalimentacionSeccion(
-                seccion="Momento de Inicio (15 min)",
-                evaluacion="excelente",
-                fortalezas=[
-                    "Excelente uso de la metáfora de la balanza en GeoGebra para activar conocimientos previos.",
-                    "Interacción dialógica que promueve la participación inicial de los estudiantes."
-                ],
-                areas_mejora=["Monitorear que el tiempo no supere los 15 minutos asignados."],
-                sugerencias=["Tener listas 2 preguntas dirigidas para activar a estudiantes más tímidos."]
-            ),
-            RetroalimentacionSeccion(
-                seccion="Desarrollo y Metodología (55 min)",
+                seccion="Caracterizacion del Curso y Contextualizacion",
                 evaluacion="buena",
                 fortalezas=[
-                    "Secuencia didáctica progresiva que transita de lo concreto (balanza) a lo abstracto (álgebra).",
-                    "El trabajo en duplas heterogéneas favorece el aprendizaje colaborativo entre pares."
+                    "Identificas estudiantes con NEET y NEEP con sus diagnosticos especificos.",
+                    "Declaras los estilos de aprendizaje del grupo (visual, kinestetivo, auditivo)."
                 ],
-                areas_mejora=["Estructurar pautas de roles dentro de cada dupla."],
-                sugerencias=["Circular activamente por las mesas con una lista de cotejo formativa durante los 25 minutos de guía."]
+                areas_mejora=["Vincular explicitamente los datos de caracterizacion con las estrategias de los 3 momentos."],
+                sugerencias=["Agregar en la columna DUA como cada estrategia responde a las caracteristicas especificas del grupo."]
             ),
             RetroalimentacionSeccion(
-                seccion="Momento de Cierre y Evaluación (20 min)",
-                evaluacion="excelente",
-                fortalezas=[
-                    "Inclusión de Ticket de Salida como instrumento de evaluación formativa rápida.",
-                    "Preguntas de metacognición que consolidan la autorregulación del aprendizaje."
-                ],
-                areas_mejora=["Reservar 3 minutos para que un estudiante sintetice la idea fuerza principal."],
-                sugerencias=["Revisar los tickets de salida antes de la próxima clase para retroalimentar errores comunes."]
-            ),
-            RetroalimentacionSeccion(
-                seccion="Diseño Universal para el Aprendizaje (DUA)",
-                evaluacion="excelente",
-                fortalezas=[
-                    "Presenta los 3 principios DUA de forma explícita: representación multimodal, expresión flexible y motivación.",
-                    "Uso equilibrado de TIC (GeoGebra) con material impreso."
-                ],
-                areas_mejora=["Profundizar en opciones kinestésicas para estudiantes que lo requieran."],
-                sugerencias=["Permitir el uso de tarjetas de pasos para alumnos que requieran apoyo visual continuo."]
-            ),
-            RetroalimentacionSeccion(
-                seccion="Atención a la Diversidad e Inclusión (PIE)",
+                seccion="Objetivo de Aprendizaje (OA) y Coherencia",
                 evaluacion="buena",
                 fortalezas=[
-                    "Considera adaptaciones para estudiantes con TDAH (segmentación de tareas y roles activos).",
-                    "Anticipación de la dificultad clásica de cambio de signo con apoyo en la balanza."
+                    "El OA declarado esta alineado con las Bases Curriculares del MINEDUC.",
+                    "El Objetivo de la Clase es especifico y observable para esta sesion."
                 ],
-                areas_mejora=["Coordinar previamente con la educadora diferencial del establecimiento."],
-                sugerencias=["Tener una guía complementaria con menor carga visual para apoyo personalizado."]
+                areas_mejora=["Verificar que el OA Transversal este integrado en alguna actividad de los 3 momentos."],
+                sugerencias=["Escribir el objetivo de la clase en la pizarra al inicio y revisarlo al cierre."]
+            ),
+            RetroalimentacionSeccion(
+                seccion="Momento de Inicio (activacion y rutina de clase)",
+                evaluacion="buena",
+                fortalezas=[
+                    "Se propone una actividad de activacion de conocimientos previos.",
+                    "La rutina de inicio ayuda a crear un ambiente estructurado y predecible."
+                ],
+                areas_mejora=["El tiempo de inicio (15 min) debe respetarse para no afectar el Desarrollo."],
+                sugerencias=["Preparar 2 preguntas dirigidas adicionales para activar a estudiantes que no participan espontaneamente."]
+            ),
+            RetroalimentacionSeccion(
+                seccion="Momento de Desarrollo (estrategia pedagogica y atencion a diversidad)",
+                evaluacion="buena",
+                fortalezas=[
+                    "El Desarrollo presenta una secuencia logica de actividades.",
+                    "Se considera el trabajo colaborativo entre estudiantes."
+                ],
+                areas_mejora=["Incorporar estrategias diferenciadas para estudiantes con NEET/NEEP durante el desarrollo."],
+                sugerencias=["Utilizar una lista de cotejo formativa durante los 60 minutos del Desarrollo para monitorear el avance."]
+            ),
+            RetroalimentacionSeccion(
+                seccion="Momento de Cierre (sintesis y evaluacion formativa)",
+                evaluacion="buena",
+                fortalezas=[
+                    "El Cierre propuesto permite verificar el logro del objetivo.",
+                    "Se contempla un instrumento de evaluacion formativa."
+                ],
+                areas_mejora=["Reservar un momento para la metacognicion de los estudiantes sobre su propio aprendizaje."],
+                sugerencias=["Usar la informacion del cierre como punto de partida de la proxima sesion."]
+            ),
+            RetroalimentacionSeccion(
+                seccion="Diversificacion de la Ensenanza (DUA por momento)",
+                evaluacion="buena",
+                fortalezas=[
+                    "Se declaran principios DUA con sus numeros de estrategia.",
+                    "El DUA esta distribuido en los momentos de la clase."
+                ],
+                areas_mejora=["Asegurar que cada momento tenga al menos un principio DUA declarado explicitamente."],
+                sugerencias=["Revisar el catalogo de estrategias DUA para diversificar mas las opciones de expresion y representacion."]
+            ),
+            RetroalimentacionSeccion(
+                seccion="Atencion a Estudiantes con NEET y NEEP",
+                evaluacion="buena",
+                fortalezas=[
+                    "Se identifican los diagnosticos de los estudiantes con necesidades educativas.",
+                    "Se considera la inclusion como parte de la planificacion."
+                ],
+                areas_mejora=["Coordinar previamente con la educadora diferencial del establecimiento sobre las adecuaciones."],
+                sugerencias=["Preparar materiales diferenciados para estudiantes con NEET que requieran apoyo visual adicional."]
             ),
         ]
 
         return RetroalimentacionFinal(
             sesion_id=sesion.sesion_id,
-            diagnostico_general="La planificación presenta una sólida estructura pedagógica y didáctica. Los momentos de la clase son coherentes con el objetivo de aprendizaje y la integración del DUA junto al apoyo PIE evidencia una adecuada preparación profesional para el aula.",
-            nivel_planificacion="muy_buena",
+            diagnostico_general="La planificacion presenta una estructura adecuada alineada con la pauta institucional de practica profesional. Los 3 momentos son coherentes con el OA declarado y se observa un intento por integrar el DUA. Para fortalecer la planificacion se recomienda profundizar en las estrategias concretas de atencion a la diversidad.",
+            nivel_planificacion="buena",
             secciones=secciones,
             recomendaciones_prioritarias=[
-                "Cuidar rigurosamente los tiempos en el inicio para no restar minutos al trabajo en duplas.",
-                "Utilizar la información del Ticket de Salida como punto de partida de la siguiente sesión.",
-                "Mantener una supervisión activa en las mesas de trabajo para asegurar que ambas partes de la dupla participen."
+                "Vincular explicitamente las estrategias DUA con los estudiantes identificados en la caracterizacion del curso.",
+                "Preparar materiales diferenciados para los estudiantes con NEET/NEEP para cada momento.",
+                "Verificar que el Cierre tenga un instrumento de evaluacion formativa que evidencie el logro del OA."
             ],
             puede_ir_al_colegio=True,
-            observaciones_para_profesor="El estudiante demostró reflexión crítica fundamentada en sus respuestas y una adecuada comprensión del enfoque DUA. Planificación autorizada para ejecución en aula."
+            observaciones_para_profesor="El estudiante demostro reflexion critica sobre su planificacion al responder las preguntas. Identifica las caracteristicas del grupo y hace intentos por integrar el DUA. Se sugiere reforzar en la proxima supervision el manejo de la diversidad en el Momento de Desarrollo."
         )
+
+
 
     # ============================================================
     # Flujo Principal de Análisis
@@ -394,11 +526,18 @@ class ChatbotService:
             )
             self._save_sesion(sesion)
 
+            lineas_faltantes = [
+                f"[{'CRÍTICO' if f.critico else 'RECOMENDADO'}] {f.elemento}: {f.descripcion}"
+                for f in elementos_faltantes
+            ]
+            mensaje_detallado = "\n".join(lineas_faltantes) if lineas_faltantes else f"Planificación incompleta: {resumen}"
+
             return PlanificacionAnalysisResult(
                 sesion_id=sesion_id,
                 pasa_verificacion=False,
                 elementos_faltantes=elementos_faltantes,
-                mensaje=f"Planificación incompleta: {resumen}. Por favor completa las secciones faltantes.",
+                mensaje=mensaje_detallado,
+                total_preguntas=0
             )
 
         # 2. Generar preguntas
@@ -435,6 +574,7 @@ class ChatbotService:
             elementos_faltantes=[],
             mensaje=f"¡Planificación validada con éxito! Responde las siguientes {len(preguntas)} preguntas de reflexión pedagógica.",
             primera_pregunta=preguntas[0],
+            total_preguntas=len(preguntas)
         )
 
     async def procesar_respuesta(self, request: ChatRequest) -> ChatResponse:

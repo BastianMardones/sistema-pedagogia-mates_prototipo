@@ -20,7 +20,7 @@ public class UsuarioController {
     private final UsuarioService usuarioService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTIVO')")
+    @PreAuthorize("hasRole('PROFESOR')")
     public ResponseEntity<List<UsuarioDTO.Response>> getAll(
             @RequestParam(required = false) String rol) {
         if (rol != null) {
@@ -29,32 +29,43 @@ public class UsuarioController {
         return ResponseEntity.ok(usuarioService.findAll());
     }
 
+    @GetMapping("/estudiantes")
+    @PreAuthorize("hasRole('PROFESOR')")
+    public ResponseEntity<List<UsuarioDTO.Response>> getEstudiantes() {
+        return ResponseEntity.ok(usuarioService.findByRol("ESTUDIANTE"));
+    }
+
+    @GetMapping("/estudiantes/{id}")
+    @PreAuthorize("hasRole('PROFESOR')")
+    public ResponseEntity<UsuarioDTO.Response> getEstudianteById(@PathVariable Long id) {
+        return ResponseEntity.ok(usuarioService.findById(id));
+    }
+
     @GetMapping("/perfil")
     public ResponseEntity<UsuarioDTO.PerfilPropio> getPerfil(Authentication auth) {
         return ResponseEntity.ok(usuarioService.getPerfil(auth.getName()));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTIVO')")
     public ResponseEntity<UsuarioDTO.Response> getById(@PathVariable Long id) {
         return ResponseEntity.ok(usuarioService.findById(id));
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('PROFESOR')")
     public ResponseEntity<UsuarioDTO.Response> create(@Valid @RequestBody UsuarioDTO.Request request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(usuarioService.create(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DIRECTIVO')")
+    @PreAuthorize("hasRole('PROFESOR')")
     public ResponseEntity<UsuarioDTO.Response> update(
             @PathVariable Long id, @Valid @RequestBody UsuarioDTO.Request request) {
         return ResponseEntity.ok(usuarioService.update(id, request));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('PROFESOR')")
     public ResponseEntity<Void> deactivate(@PathVariable Long id) {
         usuarioService.deactivate(id);
         return ResponseEntity.noContent().build();

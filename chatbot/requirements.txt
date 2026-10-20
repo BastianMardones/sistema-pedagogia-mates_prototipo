@@ -9,3 +9,6 @@ pypdf==5.1.0
 pydantic==2.9.2
 httpx==0.27.2
 python-dotenv==1.0.1
+SpeechRecognition==3.17.0
+audioop-lts==0.2.2
+standard-aifc==3.13.0

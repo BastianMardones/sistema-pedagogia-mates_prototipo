@@ -1,606 +1,476 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import AppLayout from "@/components/AppLayout";
 import { chatbotService } from "@/lib/api";
 import {
-  Upload,
-  FileText,
-  Send,
-  Bot,
-  User,
-  CheckCircle,
-  XCircle,
-  ChevronRight,
-  RotateCcw,
-  Star,
-  TrendingUp,
-  MessageSquare,
-  Lightbulb,
-  AlertTriangle,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
-  Award,
-  HelpCircle,
+  Upload, Send, CheckCircle, XCircle, AlertTriangle, FileText,
+  Sparkles, ChevronRight, Info, MessageSquare, BookOpen, Loader2
 } from "lucide-react";
-import { ChatMessage, Retroalimentacion, RetroalimentacionSeccion } from "@/types";
+import { ChatMessage, ChatSession, RetroalimentacionFinal } from "@/types";
 import clsx from "clsx";
-import { useDropzone } from "react-dropzone";
 
-type Stage = "upload" | "analyzing" | "chatting" | "feedback";
+type Fase = "upload" | "verificando" | "rechazado" | "preguntas" | "retroalimentacion";
 
-// ─── Feedback Section Card ───────────────────────────────────────────────────
-function SectionCard({ section, index }: { section: any; index: number }) {
-  const [expanded, setExpanded] = useState(true);
-  const seccionNombre = section.seccion || section.nombre || `Sección ${index + 1}`;
-  const evaluacion = section.evaluacion || "buena";
-  
-  const isPositive = evaluacion === "excelente" || evaluacion === "buena";
-  const badgeColor = evaluacion === "excelente" ? "bg-green-100 text-green-800" : evaluacion === "buena" ? "bg-blue-100 text-blue-800" : "bg-yellow-100 text-yellow-800";
+const CICLOS = [
+  { id: "inicial", label: "Ciclo Inicial", sub: "Practicas 1-2: Aproximacion y Ambientes", color: "border-blue-200 hover:border-blue-400" },
+  { id: "intermedio", label: "Ciclo Intermedio", sub: "Practicas 3-4: Colaborativo e Investigacion", color: "border-indigo-200 hover:border-indigo-400" },
+  { id: "final", label: "Ciclo Final (Profesional)", sub: "Practicas 5-6: DUA + PIE completos", color: "border-green-200 hover:border-green-400" },
+];
 
-  const fortalezas = section.fortalezas || [];
-  const mejoras = section.areas_mejora || section.mejoras || [];
-  const sugerencias = section.sugerencias || [];
+function RetroSeccion({ seccion }: { seccion: any }) {
+  const colors: Record<string, string> = {
+    excelente: "bg-green-50 border-green-200",
+    buena: "bg-blue-50 border-blue-200",
+    mejorar: "bg-yellow-50 border-yellow-200",
+    insuficiente: "bg-red-50 border-red-200",
+  };
+  const badges: Record<string, string> = {
+    excelente: "bg-green-100 text-green-800",
+    buena: "bg-blue-100 text-blue-800",
+    mejorar: "bg-yellow-100 text-yellow-800",
+    insuficiente: "bg-red-100 text-red-800",
+  };
+  const ev = seccion.evaluacion || "buena";
 
   return (
-    <div className="card border border-gray-100 p-0 overflow-hidden shadow-xs rounded-2xl">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between p-5 hover:bg-gray-50/70 transition-colors text-left"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#1e3a5f] flex items-center justify-center font-bold text-xs">
-            {index + 1}
+    <div className={clsx("border rounded-2xl p-4 space-y-3", colors[ev] || colors.buena)}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-bold text-gray-900 text-sm">{seccion.seccion}</p>
+        <span className={clsx("px-2 py-0.5 rounded-full text-[10px] font-bold uppercase", badges[ev] || badges.buena)}>
+          {ev}
+        </span>
+      </div>
+      {seccion.fortalezas?.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-green-700 uppercase mb-1">Fortalezas</p>
+          <ul className="space-y-0.5">
+            {seccion.fortalezas.map((f: string, i: number) => (
+              <li key={i} className="text-xs text-gray-700 flex gap-1.5"><span className="text-green-500 flex-shrink-0">+</span>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {seccion.areas_mejora?.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-orange-700 uppercase mb-1">Areas de mejora</p>
+          <ul className="space-y-0.5">
+            {seccion.areas_mejora.map((f: string, i: number) => (
+              <li key={i} className="text-xs text-gray-700 flex gap-1.5"><span className="text-orange-500 flex-shrink-0">!</span>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {seccion.sugerencias?.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold text-blue-700 uppercase mb-1">Sugerencias</p>
+          <ul className="space-y-0.5">
+            {seccion.sugerencias.map((f: string, i: number) => (
+              <li key={i} className="text-xs text-gray-700 flex gap-1.5"><span className="text-blue-500 flex-shrink-0">&#8594;</span>{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function ChatbotPage() {
+  const [fase, setFase] = useState<Fase>("upload");
+  const [ciclo, setCiclo] = useState("final");
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [sesionId, setSesionId] = useState<string | null>(null);
+  const [preguntaActual, setPreguntaActual] = useState<any>(null);
+  const [numPregunta, setNumPregunta] = useState(0);
+  const [totalPreguntas, setTotalPreguntas] = useState(0);
+  const [respuesta, setRespuesta] = useState("");
+  const [mensajeRechazo, setMensajeRechazo] = useState<string[]>([]);
+  const [retroalimentacion, setRetroalimentacion] = useState<RetroalimentacionFinal | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const addMessage = (role: "bot" | "user", content: string) => {
+    setMessages(m => [...m, { role, content, timestamp: new Date() }]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f && f.type === "application/pdf") setArchivo(f);
+  };
+
+  const handleAnalizarPlanificacion = async () => {
+    if (!archivo) { setError("Selecciona un archivo PDF primero."); return; }
+    setLoading(true);
+    setError("");
+    setFase("verificando");
+    setMessages([]);
+
+    try {
+      const res = await chatbotService.analizarPlanificacion(archivo, ciclo);
+      const data: ChatSession = res.data;
+      setSesionId(data.sesion_id);
+
+      if (!data.pasa_verificacion) {
+        // Rechazado
+        setFase("rechazado");
+        const faltantes = data.mensaje?.split("\n").filter(Boolean) || ["La planificacion no cumple con la estructura minima requerida."];
+        setMensajeRechazo(faltantes);
+        addMessage("bot", data.mensaje || "Tu planificacion no contiene todos los elementos minimos.");
+      } else {
+        // Pasa - mostrar primera pregunta
+        setFase("preguntas");
+        setTotalPreguntas(data.total_preguntas || 5);
+        setNumPregunta(1);
+        const pq = data.primera_pregunta;
+        setPreguntaActual(pq);
+        const intro = "Tu planificacion ha pasado la verificacion. Ahora responde las siguientes preguntas de reflexion pedagogica. Deben ser respuestas fundamentadas, no de una sola palabra.";
+        addMessage("bot", intro);
+        if (pq) addMessage("bot", `Pregunta 1/${data.total_preguntas}: ${pq.pregunta}`);
+      }
+    } catch (err: any) {
+      setError("No se pudo conectar con el Chatbot (verifica que este corriendo en el puerto 8000 con GOOGLE_API_KEY).");
+      setFase("upload");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResponder = async () => {
+    if (!respuesta.trim() || respuesta.trim().split(" ").length < 5) {
+      setError("Escribe una respuesta mas completa (al menos 5 palabras).");
+      return;
+    }
+    if (!sesionId) return;
+    setLoading(true);
+    setError("");
+
+    addMessage("user", respuesta);
+    const respGuardada = respuesta;
+    setRespuesta("");
+
+    try {
+      const res = await chatbotService.responderPregunta(sesionId, respGuardada);
+      const data: ChatSession = res.data;
+
+      if (data.estado === "retroalimentacion" || data.retroalimentacion) {
+        // Ir a retroalimentacion
+        setFase("retroalimentacion");
+        setRetroalimentacion(data.retroalimentacion);
+        addMessage("bot", "Has completado todas las preguntas de reflexion. A continuacion tu retroalimentacion pedagogica:");
+      } else if (data.siguiente_pregunta) {
+        const pq = data.siguiente_pregunta;
+        setPreguntaActual(pq);
+        setNumPregunta(data.preguntas_completadas ? data.preguntas_completadas + 1 : numPregunta + 1);
+        addMessage("bot", `Pregunta ${pq.numero}/${totalPreguntas}: ${pq.pregunta}`);
+      }
+    } catch (err: any) {
+      setError("Error al enviar la respuesta. Intenta nuevamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AppLayout>
+      <div className="p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-start gap-4 pb-5 border-b border-gray-200">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#2d8a4e] to-green-400 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-6 h-6 text-white" />
           </div>
           <div>
-            <p className="font-bold text-gray-900 text-sm">{seccionNombre}</p>
-            <span className={clsx("inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full mt-1", badgeColor)}>
-              {evaluacion}
-            </span>
+            <h1 className="text-2xl font-bold text-[#1e3a5f]" style={{ fontFamily: "'Playfair Display', serif" }}>
+              Chatbot Pedagogico
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Sube tu planificacion para que la IA verifique los elementos minimos, te haga preguntas de reflexion y te retroalimente por seccion.
+            </p>
           </div>
         </div>
-        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-      </button>
 
-      {expanded && (
-        <div className="border-t border-gray-100 p-5 space-y-4 bg-gray-50/30">
-          {fortalezas.length > 0 && (
-            <div>
-              <p className="text-xs font-bold text-[#2d8a4e] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5" /> Fortalezas identificadas
-              </p>
-              <ul className="space-y-1.5">
-                {fortalezas.map((f: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-gray-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#2d8a4e] mt-1.5 flex-shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
+        {/* Info card */}
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-800 space-y-1">
+              <p className="font-bold">Como funciona el proceso:</p>
+              <p>1. Sube el PDF de tu planificacion con OA, 3 momentos, DUA y caracterizacion del curso</p>
+              <p>2. La IA verifica que tenga los elementos minimos obligatorios</p>
+              <p>3. Si pasa: responde entre 1 y 5 preguntas de reflexion pedagogica</p>
+              <p>4. Recibes retroalimentacion detallada por cada seccion de la pauta</p>
             </div>
-          )}
+          </div>
+        </div>
 
-          {mejoras.length > 0 && (
+        {/* Error */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {/* FASE: Upload */}
+        {fase === "upload" && (
+          <div className="space-y-6">
+            {/* Ciclo selector */}
             <div>
-              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Lightbulb className="w-3.5 h-3.5" /> Oportunidades de mejora
-              </p>
-              <ul className="space-y-1.5">
-                {mejoras.map((m: string, i: number) => (
-                  <li key={i} className="flex items-start gap-2 text-xs sm:text-sm text-gray-700">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />
+              <p className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Ciclo de Practica</p>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {CICLOS.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCiclo(c.id)}
+                    className={clsx(
+                      "card rounded-2xl p-4 text-left border-2 transition-all",
+                      ciclo === c.id ? "border-[#2d8a4e] bg-green-50 shadow-sm" : c.color
+                    )}
+                  >
+                    <p className="font-bold text-sm text-gray-900">{c.label}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5">{c.sub}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PDF Upload */}
+            <div>
+              <p className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Planificacion (PDF)</p>
+              <div
+                onDrop={handleDrop}
+                onDragOver={e => { e.preventDefault(); setDragging(true); }}
+                onDragLeave={() => setDragging(false)}
+                onClick={() => fileRef.current?.click()}
+                className={clsx(
+                  "flex flex-col items-center justify-center h-40 border-2 border-dashed rounded-2xl cursor-pointer transition-all",
+                  dragging ? "border-[#2d8a4e] bg-green-50" :
+                  archivo ? "border-green-400 bg-green-50" :
+                  "border-gray-200 hover:border-[#2d8a4e]/50 hover:bg-gray-50"
+                )}
+              >
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf"
+                  className="hidden"
+                  onChange={e => setArchivo(e.target.files?.[0] || null)}
+                />
+                {archivo ? (
+                  <>
+                    <FileText className="w-8 h-8 text-green-600 mb-2" />
+                    <p className="font-bold text-green-800 text-sm">{archivo.name}</p>
+                    <p className="text-xs text-gray-500 mt-1">{(archivo.size / 1024).toFixed(0)} KB · Haz clic para cambiar</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                    <p className="font-semibold text-gray-700 text-sm">Arrastra tu PDF aqui</p>
+                    <p className="text-xs text-gray-400 mt-1">o haz clic para seleccionar</p>
+                    <p className="text-[10px] text-gray-300 mt-1">Solo archivos PDF</p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAnalizarPlanificacion}
+              disabled={!archivo || loading}
+              className="btn-primary w-full py-3 font-bold text-sm flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" />
+              Analizar Planificacion con IA
+            </button>
+          </div>
+        )}
+
+        {/* FASE: Verificando */}
+        {fase === "verificando" && (
+          <div className="card rounded-2xl p-10 text-center">
+            <Loader2 className="w-10 h-10 text-[#2d8a4e] animate-spin mx-auto mb-4" />
+            <p className="font-bold text-gray-900">Analizando tu planificacion...</p>
+            <p className="text-xs text-gray-500 mt-2">Verificando OA, 3 momentos, DUA, NEET/NEEP y evaluacion</p>
+          </div>
+        )}
+
+        {/* FASE: Rechazado */}
+        {fase === "rechazado" && (
+          <div className="space-y-4">
+            <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <XCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
+                <div>
+                  <p className="font-bold text-red-800 text-base">Planificacion rechazada</p>
+                  <p className="text-xs text-red-600 mt-1">Tu planificacion no contiene todos los elementos minimos. Corrige los siguientes puntos antes de volver a enviar:</p>
+                </div>
+              </div>
+              <ul className="space-y-2">
+                {mensajeRechazo.map((m, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-red-800 bg-white rounded-xl p-3 border border-red-100">
+                    <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
                     {m}
                   </li>
                 ))}
               </ul>
             </div>
-          )}
-
-          {sugerencias.length > 0 && (
-            <div className="bg-blue-50/60 rounded-xl p-3.5 border border-blue-100">
-              <p className="text-xs font-bold text-[#1e3a5f] uppercase tracking-wider mb-1.5">
-                💡 Sugerencia pedagógica para el aula:
-              </p>
-              <ul className="space-y-1">
-                {sugerencias.map((s: string, i: number) => (
-                  <li key={i} className="text-xs text-blue-900 leading-relaxed">
-                    • {s}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Feedback View ────────────────────────────────────────────────────────────
-function FeedbackView({ retro, onRestart }: { retro: any; onRestart: () => void }) {
-  const diagnostico = retro.diagnostico_general || retro.resumen || "Retroalimentación generada exitosamente.";
-  const nivelPlanif = retro.nivel_planificacion || "buena";
-  const puedeIr = retro.puede_ir_al_colegio ?? true;
-  const secciones = retro.secciones || [];
-  const recomendaciones = retro.recomendaciones_prioritarias || retro.recomendaciones || [];
-  const obsProfesor = retro.observaciones_para_profesor || "";
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Hero card */}
-      <div className="card bg-gradient-to-br from-[#1e3a5f] via-[#2a4f7c] to-[#152b47] text-white p-7 rounded-3xl shadow-lg space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 text-xs font-bold backdrop-blur">
-            <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-            Dictamen Pedagógico de la IA
-          </div>
-          <span
-            className={clsx(
-              "px-3 py-1 rounded-full text-xs font-bold shadow-sm",
-              puedeIr ? "bg-[#2d8a4e] text-white" : "bg-amber-500 text-white"
-            )}
-          >
-            {puedeIr ? "✓ Apta para presentar al profesor" : "⚠ Requiere ajustes antes de autorizar"}
-          </span>
-        </div>
-
-        <h2 className="text-2xl font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
-          Nivel de Planificación: <span className="capitalize text-yellow-300">{nivelPlanif.replace("_", " ")}</span>
-        </h2>
-
-        <p className="text-blue-100 text-sm leading-relaxed max-w-3xl">
-          {diagnostico}
-        </p>
-
-        {obsProfesor && (
-          <div className="bg-white/10 rounded-2xl p-4 border border-white/10 text-xs text-blue-200">
-            <strong className="text-white">Nota para el profesor de asignatura:</strong> {obsProfesor}
-          </div>
-        )}
-      </div>
-
-      {/* Sections */}
-      {secciones.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-[#1e3a5f]" />
-            Evaluación por Momentos y Criterios DUA / PIE
-          </h3>
-          <div className="space-y-3">
-            {secciones.map((s: any, i: number) => (
-              <SectionCard key={i} section={s} index={i} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Priority Recommendations */}
-      {recomendaciones.length > 0 && (
-        <div className="card bg-amber-50/70 border border-amber-200 p-6 rounded-2xl space-y-3">
-          <h3 className="font-bold text-amber-900 text-sm flex items-center gap-2">
-            <Star className="w-4 h-4 text-amber-600" />
-            Acciones Prioritarias antes de entrar a la sala de clases:
-          </h3>
-          <ul className="space-y-2">
-            {recomendaciones.map((r: string, i: number) => (
-              <li key={i} className="flex items-start gap-2.5 text-xs sm:text-sm text-amber-950">
-                <ChevronRight className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex justify-end gap-3 pt-2">
-        <button onClick={onRestart} className="btn-secondary flex items-center gap-2 text-xs font-bold">
-          <RotateCcw className="w-4 h-4" />
-          Evaluar otra planificación
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
-export default function ChatbotPage() {
-  const [stage, setStage] = useState<Stage>("upload");
-  const [file, setFile] = useState<File | null>(null);
-  const [nivel, setNivel] = useState("avanzado");
-  const [sesionId, setSesionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [currentQuestionNumber, setCurrentQuestionNumber] = useState(1);
-  const [totalQuestions, setTotalQuestions] = useState(4);
-  const [inputValue, setInputValue] = useState("");
-  const [sending, setSending] = useState(false);
-  const [retro, setRetro] = useState<any>(null);
-  const [error, setError] = useState("");
-  const [loadingSample, setLoadingSample] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const onDrop = useCallback((accepted: File[]) => {
-    if (accepted.length > 0) {
-      setFile(accepted[0]);
-      setError("");
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "application/pdf": [".pdf"] },
-    maxFiles: 1,
-    maxSize: 20 * 1024 * 1024,
-    onDropRejected: (files) => {
-      const err = files[0]?.errors[0];
-      if (err?.code === "file-too-large") setError("El archivo no puede superar 20MB.");
-      else if (err?.code === "file-invalid-type") setError("Solo se aceptan archivos PDF.");
-      else setError("Archivo no válido.");
-    },
-  });
-
-  const handleLoadSample = async () => {
-    setLoadingSample(true);
-    setError("");
-    try {
-      const response = await fetch("/ejemplo_planificacion_matematica.pdf");
-      const blob = await response.blob();
-      const sampleFile = new File([blob], "Planificacion_Matematica_1Medio_Ecuaciones.pdf", {
-        type: "application/pdf",
-      });
-      setFile(sampleFile);
-    } catch (err) {
-      setError("No se pudo cargar el archivo de ejemplo.");
-    } finally {
-      setLoadingSample(false);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    if (!file) return;
-    setStage("analyzing");
-    setError("");
-
-    try {
-      const res = await chatbotService.analizarPlanificacion(file, nivel);
-      const data = res.data;
-
-      setSesionId(data.sesion_id);
-
-      if (!data.pasa_verificacion) {
-        setError(data.mensaje || "La planificación no cumple los elementos mínimos.");
-        setStage("upload");
-        return;
-      }
-
-      const primeraPregunta = data.primera_pregunta;
-      setCurrentQuestionNumber(1);
-
-      setMessages([
-        {
-          role: "bot",
-          content: `👋 **¡Planificación recibida!** He verificado tu documento *"${file.name}"* y cuenta con los elementos estructurales mínimos.\n\nPara profundizar en tus decisiones didácticas antes de darte la retroalimentación completa, te haré una serie de preguntas de reflexión:`,
-          timestamp: new Date(),
-        },
-        {
-          role: "bot",
-          content: primeraPregunta ? `📌 **Pregunta 1 (${primeraPregunta.aspecto}):**\n${primeraPregunta.pregunta}` : "Por favor, explica las decisiones pedagógicas principales de tu clase.",
-          timestamp: new Date(),
-        },
-      ]);
-
-      setStage("chatting");
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        "No se pudo conectar con el Chatbot (verifique que esté corriendo en el puerto 8000 con GOOGLE_API_KEY).";
-      setError(msg);
-      setStage("upload");
-    }
-  };
-
-  const handleSend = async () => {
-    if (!inputValue.trim() || !sesionId || sending) return;
-
-    const userText = inputValue;
-    const userMsg: ChatMessage = {
-      role: "user",
-      content: userText,
-      timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setInputValue("");
-    setSending(true);
-
-    try {
-      const res = await chatbotService.responderPregunta(sesionId, userText);
-      const data = res.data;
-
-      if (data.estado === "retroalimentacion" || data.estado === "completada" || data.retroalimentacion) {
-        setRetro(data.retroalimentacion);
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "bot",
-            content: "🎉 **¡Excelente reflexión!** Has completado las preguntas requeridas. He generado tu dictamen y retroalimentación final:",
-            timestamp: new Date(),
-          },
-        ]);
-        setStage("feedback");
-      } else {
-        const nextQ = data.siguiente_pregunta;
-        setCurrentQuestionNumber(data.preguntas_completadas ? data.preguntas_completadas + 1 : currentQuestionNumber + 1);
-        setTotalQuestions(data.total_preguntas || 4);
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "bot",
-            content: nextQ
-              ? `${data.mensaje}\n\n📌 **Pregunta ${nextQ.numero} (${nextQ.aspecto}):**\n${nextQ.pregunta}`
-              : data.mensaje || "Siguiente pregunta de reflexión...",
-            timestamp: new Date(),
-          },
-        ]);
-      }
-    } catch (err: any) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "bot",
-          content: "⚠️ Hubo un problema al evaluar la respuesta. Asegúrate de dar una respuesta reflexiva y fundamentada pedagógicamente.",
-          timestamp: new Date(),
-        },
-      ]);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleRestart = () => {
-    setStage("upload");
-    setFile(null);
-    setMessages([]);
-    setSesionId(null);
-    setRetro(null);
-    setError("");
-    setCurrentQuestionNumber(1);
-    setInputValue("");
-  };
-
-  return (
-    <AppLayout>
-      <div className="p-6 lg:p-8 max-w-5xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200/80 pb-5">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-[#1e3a5f] text-xs font-bold mb-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#2d8a4e]" />
-              Tutor Inteligente de Práctica
-            </div>
-            <h1
-              className="text-3xl font-bold text-[#1e3a5f]"
-              style={{ fontFamily: "'Playfair Display', serif" }}
-            >
-              Chatbot de Retroalimentación Pedagógica
-            </h1>
-            <p className="text-gray-500 text-xs sm:text-sm mt-1">
-              Sube tu planificación de clase (PDF) y reflexiona con la IA para perfeccionarla antes de entrar al aula.
-            </p>
-          </div>
-        </div>
-
-        {/* ── STAGE: UPLOAD ─────────────────────────────────────────────────── */}
-        {(stage === "upload" || stage === "analyzing") && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Drop zone */}
-            <div
-              {...getRootProps()}
-              className={clsx(
-                "border-2 border-dashed rounded-3xl p-10 text-center cursor-pointer transition-all duration-200 bg-white shadow-xs",
-                isDragActive
-                  ? "border-[#1e3a5f] bg-blue-50/80 scale-[1.01]"
-                  : file
-                  ? "border-[#2d8a4e] bg-green-50/50"
-                  : "border-gray-300 hover:border-[#1e3a5f] hover:bg-gray-50/60"
-              )}
-            >
-              <input {...getInputProps()} />
-
-              {file ? (
-                <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mb-3">
-                    <FileText className="w-8 h-8 text-[#2d8a4e]" />
-                  </div>
-                  <p className="font-bold text-gray-900 text-base">{file.name}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {(file.size / 1024).toFixed(1)} KB · Archivo PDF
-                  </p>
-                  <span className="inline-block text-xs text-[#2d8a4e] mt-3 font-semibold bg-green-100 px-3 py-1 rounded-full">
-                    ✓ Documento listo para análisis
-                  </span>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center">
-                  <div
-                    className={clsx(
-                      "w-16 h-16 rounded-2xl flex items-center justify-center mb-3 transition-colors",
-                      isDragActive ? "bg-blue-100" : "bg-blue-50 text-[#1e3a5f]"
-                    )}
-                  >
-                    <Upload className="w-8 h-8" />
-                  </div>
-                  <p className="font-bold text-gray-800 text-lg">
-                    {isDragActive ? "Suelta el archivo aquí" : "Arrastra tu planificación en PDF"}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    o haz clic aquí para seleccionar desde tu computador
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Sample Button */}
-            {!file && (
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={handleLoadSample}
-                  disabled={loadingSample}
-                  className="inline-flex items-center gap-2 text-xs font-bold text-[#1e3a5f] hover:text-[#2d8a4e] bg-white border border-gray-200 hover:border-[#2d8a4e] px-4 py-2 rounded-xl shadow-xs transition-all"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#2d8a4e]" />
-                  {loadingSample ? "Cargando ejemplo..." : "📄 Probar con Planificación de Ejemplo (Ecuaciones Lineales 1° Medio)"}
-                </button>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-4 py-3 text-xs sm:text-sm">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Ciclo de Práctica Selector */}
-            <div className="card rounded-2xl space-y-2">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Ciclo de Práctica (Nivel de Exigencia)
-              </label>
-              <select
-                value={nivel}
-                onChange={(e) => setNivel(e.target.value)}
-                className="input-field text-sm font-medium"
-              >
-                <option value="avanzado">Ciclo Final (Práctica Pedagógica y Profesional) — Exige DUA y PIE completos</option>
-                <option value="intermedio">Ciclo Intermedio (Práctica 3 y 4: Trabajo Colaborativo e Investigación)</option>
-                <option value="inicial">Ciclo Inicial (Práctica 1 y 2: Aproximación y Ambientes)</option>
-              </select>
-              <p className="text-[11px] text-gray-400">
-                La IA adaptará las preguntas y la severidad de la retroalimentación según el año formativo del estudiante.
-              </p>
-            </div>
-
-            {/* Submit button */}
             <button
-              onClick={handleAnalyze}
-              disabled={!file || stage === "analyzing"}
-              className="btn-primary w-full py-3.5 text-sm font-bold flex items-center justify-center gap-2 shadow-lg"
+              type="button"
+              onClick={() => { setFase("upload"); setMessages([]); setArchivo(null); setError(""); }}
+              className="btn-primary w-full py-3 font-bold text-sm"
             >
-              {stage === "analyzing" ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  Verificando elementos mínimos y generando preguntas...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  Iniciar Evaluación con IA
-                </>
-              )}
+              Subir planificacion corregida
             </button>
           </div>
         )}
 
-        {/* ── STAGE: CHATTING ───────────────────────────────────────────────── */}
-        {stage === "chatting" && (
-          <div className="space-y-4 animate-in fade-in duration-200">
-            {/* Progress header */}
-            <div className="card rounded-2xl p-4 bg-white border border-gray-200 flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-[#1e3a5f] uppercase tracking-wider">
-                  Etapa de Reflexión Pedagógica
-                </span>
-                <p className="text-xs text-gray-500">
-                  Responde a las preguntas de la IA para desbloquear la retroalimentación.
-                </p>
+        {/* FASE: Preguntas */}
+        {fase === "preguntas" && (
+          <div className="space-y-4">
+            {/* Progress */}
+            <div className="card rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-gray-700">Progreso de reflexion</p>
+                <p className="text-xs text-gray-500">{numPregunta - 1}/{totalPreguntas} preguntas respondidas</p>
               </div>
-              <span className="text-xs font-bold bg-blue-50 text-[#1e3a5f] px-3 py-1.5 rounded-lg">
-                Pregunta {currentQuestionNumber} de {totalQuestions}
-              </span>
+              <div className="h-2 bg-gray-100 rounded-full">
+                <div
+                  className="h-2 bg-gradient-to-r from-[#1e3a5f] to-[#2d8a4e] rounded-full transition-all"
+                  style={{ width: `${((numPregunta - 1) / totalPreguntas) * 100}%` }}
+                />
+              </div>
             </div>
 
-            {/* Messages box */}
-            <div className="card rounded-3xl p-5 bg-gray-50/50 border border-gray-200 h-[480px] overflow-y-auto space-y-4">
+            {/* Chat messages */}
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {messages.map((m, i) => (
                 <div
                   key={i}
                   className={clsx(
-                    "flex gap-3 max-w-3xl",
-                    m.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
+                    "rounded-2xl p-4 text-sm leading-relaxed",
+                    m.role === "bot"
+                      ? "bg-green-50 border border-green-100 text-gray-800"
+                      : "bg-[#1e3a5f] text-white ml-8"
                   )}
                 >
-                  <div
-                    className={clsx(
-                      "w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 shadow-xs",
-                      m.role === "user" ? "bg-[#2d8a4e] text-white" : "bg-[#1e3a5f] text-white"
-                    )}
-                  >
-                    {m.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                  </div>
-                  <div
-                    className={clsx(
-                      "rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-xs",
-                      m.role === "user"
-                        ? "bg-[#1e3a5f] text-white rounded-tr-none"
-                        : "bg-white text-gray-800 border border-gray-200/80 rounded-tl-none whitespace-pre-wrap"
-                    )}
-                  >
-                    {m.content}
-                  </div>
+                  {m.role === "bot" && <p className="text-[10px] font-bold text-green-600 uppercase mb-1.5">Chatbot Pedagogico</p>}
+                  {m.content}
                 </div>
               ))}
-              <div ref={messagesEndRef} />
+              {loading && (
+                <div className="bg-green-50 border border-green-100 rounded-2xl p-4 flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-green-600 animate-spin" />
+                  <span className="text-sm text-gray-500">Procesando tu respuesta...</span>
+                </div>
+              )}
+              <div ref={bottomRef} />
             </div>
 
-            {/* Input bar */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={sending}
-                placeholder="Escribe tu reflexión pedagógica y presiona Enter..."
-                className="input-field flex-1 text-xs sm:text-sm"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!inputValue.trim() || sending}
-                className="btn-primary px-5 flex items-center justify-center"
-              >
-                {sending ? (
-                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-              </button>
-            </div>
+            {/* Input */}
+            {preguntaActual && !loading && (
+              <div className="card rounded-2xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs text-gray-500 font-semibold">
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  Aspecto: {preguntaActual.aspecto?.replace(/_/g, " ")} · Pregunta {numPregunta}/{totalPreguntas}
+                </div>
+                <textarea
+                  value={respuesta}
+                  onChange={e => setRespuesta(e.target.value)}
+                  rows={3}
+                  placeholder="Escribe tu respuesta aqui (minimo 5 palabras)..."
+                  className="input-field resize-none text-sm"
+                  onKeyDown={e => { if (e.key === "Enter" && e.metaKey) handleResponder(); }}
+                />
+                <button
+                  type="button"
+                  onClick={handleResponder}
+                  disabled={loading || !respuesta.trim()}
+                  className="btn-primary w-full py-2.5 text-sm font-bold flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" /> Enviar respuesta
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── STAGE: FEEDBACK ───────────────────────────────────────────────── */}
-        {stage === "feedback" && retro && (
-          <FeedbackView retro={retro} onRestart={handleRestart} />
+        {/* FASE: Retroalimentacion */}
+        {fase === "retroalimentacion" && retroalimentacion && (
+          <div className="space-y-5">
+            {/* Summary header */}
+            <div className={clsx(
+              "card rounded-2xl p-6 border-2",
+              retroalimentacion.puede_ir_al_colegio ? "border-green-300 bg-green-50" : "border-yellow-300 bg-yellow-50"
+            )}>
+              <div className="flex items-start gap-4">
+                {retroalimentacion.puede_ir_al_colegio
+                  ? <CheckCircle className="w-8 h-8 text-green-600 flex-shrink-0" />
+                  : <AlertTriangle className="w-8 h-8 text-yellow-600 flex-shrink-0" />}
+                <div>
+                  <p className={clsx("font-bold text-lg", retroalimentacion.puede_ir_al_colegio ? "text-green-800" : "text-yellow-800")}>
+                    {retroalimentacion.puede_ir_al_colegio
+                      ? "Planificacion aprobada para ejecucion en aula"
+                      : "Requiere ajustes antes de ir al colegio"}
+                  </p>
+                  <p className="text-sm text-gray-700 mt-2 leading-relaxed">{retroalimentacion.diagnostico_general}</p>
+                  <div className="mt-3">
+                    <span className={clsx(
+                      "px-3 py-1 rounded-full text-xs font-bold",
+                      { muy_buena: "bg-green-100 text-green-800", buena: "bg-blue-100 text-blue-800", regular: "bg-yellow-100 text-yellow-800", insuficiente: "bg-red-100 text-red-800" }[retroalimentacion.nivel_planificacion] || "bg-gray-100 text-gray-700"
+                    )}>
+                      Nivel: {retroalimentacion.nivel_planificacion?.replace("_", " ")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Secciones */}
+            {retroalimentacion.secciones?.map((s: any, i: number) => (
+              <RetroSeccion key={i} seccion={s} />
+            ))}
+
+            {/* Recomendaciones */}
+            {retroalimentacion.recomendaciones_prioritarias?.length > 0 && (
+              <div className="card rounded-2xl p-5 bg-[#1e3a5f]/5 border border-[#1e3a5f]/10">
+                <p className="font-bold text-[#1e3a5f] text-sm mb-3">3 Acciones Prioritarias para tu proxima planificacion:</p>
+                <ol className="space-y-2">
+                  {retroalimentacion.recomendaciones_prioritarias.map((r: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2.5 text-sm text-gray-800">
+                      <span className="w-5 h-5 rounded-full bg-[#1e3a5f] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                      {r}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {/* Note for profesor */}
+            {retroalimentacion.observaciones_para_profesor && (
+              <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4">
+                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Nota visible para el Profesor Tutor</p>
+                <p className="text-sm text-gray-700 italic">{retroalimentacion.observaciones_para_profesor}</p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => { setFase("upload"); setArchivo(null); setMessages([]); setRetroalimentacion(null); setSesionId(null); }}
+              className="btn-secondary w-full py-3 text-sm font-bold"
+            >
+              Analizar otra planificacion
+            </button>
+          </div>
         )}
       </div>
     </AppLayout>

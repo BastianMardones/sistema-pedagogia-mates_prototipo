@@ -1,0 +1,209 @@
+﻿@startuml MER_Sistema_Practicas_Pedagogicas
+!theme plain
+skinparam linetype ortho
+skinparam roundcorner 5
+skinparam shadowing false
+skinparam handwritten false
+skinparam classFontSize 12
+skinparam classAttributeFontSize 11
+
+title Modelo Entidad-Relación (MER) - Sistema de Gestión de Prácticas Pedagógicas (SGP Matemáticas)
+
+entity "Usuario" as Usuario {
+  * id_usuario : BIGINT <<PK, Auto>>
+  --
+  * rut : VARCHAR(12) <<UK>>
+  * nombre : VARCHAR(100)
+  * apellido : VARCHAR(100)
+  * email : VARCHAR(150) <<UK>>
+  * password_hash : VARCHAR(255)
+  * rol : ENUM('ESTUDIANTE', 'PROFESOR')
+  * activo : BOOLEAN
+  * created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "EstudiantePerfil" as EstudiantePerfil {
+  * id_perfil : BIGINT <<PK, Auto>>
+  --
+  * id_usuario : BIGINT <<FK, UK>>
+  * cohorte_ingreso : INT
+  carrera : VARCHAR(150)
+  telefono : VARCHAR(20)
+  semestre_actual : INT
+}
+
+entity "CentroPractica" as CentroPractica {
+  * id_centro : BIGINT <<PK, Auto>>
+  --
+  * rbd : INT <<UK>>
+  * nombre_colegio : VARCHAR(150)
+  * comuna : VARCHAR(100)
+  dependencia : ENUM('MUNICIPAL', 'SUBVENCIONADO', 'PARTICULAR_PAGADO', 'SERVICIO_LOCAL')
+  convenio_vigente : BOOLEAN
+  direccion : VARCHAR(200)
+}
+
+entity "AsignaturaPractica" as AsignaturaPractica {
+  * id_asignatura : BIGINT <<PK, Auto>>
+  --
+  * codigo : VARCHAR(20) <<UK>>
+  * nombre : VARCHAR(150)
+  * ciclo : ENUM('INICIAL', 'INTERMEDIO', 'AVANZADO')
+  * semestre_malla : INT
+  * anio_academico : INT
+  * id_profesor_coordinador : BIGINT <<FK>>
+  activo : BOOLEAN
+}
+
+entity "AsignacionPractica" as AsignacionPractica {
+  * id_asignacion : BIGINT <<PK, Auto>>
+  --
+  * id_estudiante : BIGINT <<FK>>
+  * id_asignatura : BIGINT <<FK>>
+  id_profesor_tutor : BIGINT <<FK>>
+  id_profesor_colaborador : BIGINT <<FK>>
+  id_centro : BIGINT <<FK>>
+  * periodo_academico : VARCHAR(20)
+  * estado_asignacion : ENUM('ACTIVA', 'FINALIZADA', 'REPROBADA', 'ANULADA')
+  nota_final : DECIMAL(3,2)
+  created_at : DATETIME
+}
+
+entity "Planificacion" as Planificacion {
+  * id_planificacion : BIGINT <<PK, Auto>>
+  --
+  * id_estudiante_autor : BIGINT <<FK>>
+  id_profesor_revisor : BIGINT <<FK>>
+  id_asignacion : BIGINT <<FK>>
+  * titulo : VARCHAR(300)
+  * anio_clase : INT
+  periodo_clase : VARCHAR(50)
+  asignatura_clase : VARCHAR(150)
+  curso_clase : VARCHAR(100)
+  unidad_tematica : TEXT
+  equipo_co_ensenanza : TEXT
+  num_est_neet : INT
+  diagnosticos_neet : TEXT
+  num_est_neep : INT
+  diagnosticos_neep : TEXT
+  estilo_visual : INT
+  estilo_kinestetivo : INT
+  estilo_auditivo : INT
+  otros_datos : TEXT
+  objetivo_oa : TEXT
+  indicadores_evaluacion : TEXT
+  objetivo_transversal : TEXT
+  * objetivo_clase : TEXT
+  * momento_inicio : TEXT
+  * momento_desarrollo : TEXT
+  * momento_cierre : TEXT
+  principios_dua : TEXT
+  evaluacion_clase : TEXT
+  pdf_url : VARCHAR(500)
+  * estado : ENUM('BORRADOR', 'EN_REVISION', 'APROBADA', 'RECHAZADA')
+  comentario_profesor : TEXT
+  retroalimentacion_ia : TEXT
+  historial_chatbot : TEXT
+  * created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "SesionChatbot" as SesionChatbot {
+  * id_sesion : VARCHAR(64) <<PK>>
+  --
+  * id_planificacion : BIGINT <<FK>>
+  * nivel_estudiante : VARCHAR(50)
+  * estado_sesion : ENUM('ACTIVA', 'COMPLETADA', 'ABANDONADA')
+  * paso_actual : INT
+  retroalimentacion_final : TEXT
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "PreguntaReflexionChatbot" as PreguntaReflexionChatbot {
+  * id_pregunta : BIGINT <<PK, Auto>>
+  --
+  * id_sesion : VARCHAR(64) <<FK>>
+  * numero_pregunta : INT
+  * categoria : VARCHAR(50)
+  * texto_pregunta : TEXT
+  respuesta_estudiante : TEXT
+  retroalimentacion_ia : TEXT
+  respondida_at : DATETIME
+}
+
+entity "PautaEvaluacion" as PautaEvaluacion {
+  * id_pauta : BIGINT <<PK, Auto>>
+  --
+  * nombre_pauta : VARCHAR(150)
+  * ciclo : ENUM('INICIAL', 'INTERMEDIO', 'AVANZADO')
+  * tipo_hito : ENUM('DIAGNOSTICA', 'PROGRESIVA_1', 'PROGRESIVA_2', 'FINAL')
+  escala_minima : INT
+  escala_maxima : INT
+  activo : BOOLEAN
+}
+
+entity "CriterioEvaluacion" as CriterioEvaluacion {
+  * id_criterio : BIGINT <<PK, Auto>>
+  --
+  * id_pauta : BIGINT <<FK>>
+  * dimension : VARCHAR(100)
+  * descripcion_indicador : TEXT
+  * orden : INT
+}
+
+entity "EvaluacionPractica" as EvaluacionPractica {
+  * id_evaluacion : BIGINT <<PK, Auto>>
+  --
+  * id_asignacion : BIGINT <<FK>>
+  * id_pauta : BIGINT <<FK>>
+  * id_evaluador : BIGINT <<FK>>
+  * fecha_observacion : DATE
+  puntaje_total : DECIMAL(5,2)
+  nota_final : DECIMAL(3,2)
+  observaciones_cualitativas : TEXT
+  observaciones_desde_voz : BOOLEAN
+  audio_url : VARCHAR(500)
+  transcripcion_audio : TEXT
+  * estado : ENUM('BORRADOR', 'COMPLETADA', 'ENVIADA')
+  created_at : DATETIME
+  updated_at : DATETIME
+}
+
+entity "DetalleEvaluacion" as DetalleEvaluacion {
+  * id_detalle : BIGINT <<PK, Auto>>
+  --
+  * id_evaluacion : BIGINT <<FK>>
+  * id_criterio : BIGINT <<FK>>
+  * puntaje : INT
+  observacion_especifica : TEXT
+}
+
+' ============================================================
+' RELACIONES Y CARDINALIDADES
+' ============================================================
+
+Usuario ||--o| EstudiantePerfil : "1:1 tiene datos académicos"
+Usuario ||--o{ AsignaturaPractica : "1:N coordina (Profesor)"
+Usuario ||--o{ AsignacionPractica : "1:N asignado como estudiante"
+Usuario ||--o{ AsignacionPractica : "1:N asignado como tutor/profesor"
+CentroPractica ||--o{ AsignacionPractica : "1:N alberga"
+AsignaturaPractica ||--o{ AsignacionPractica : "1:N cursa"
+
+AsignacionPractica ||--o{ Planificacion : "1:N elabora"
+Usuario ||--o{ Planificacion : "1:N es autor (Estudiante)"
+Usuario ||--o{ Planificacion : "1:N supervisa (Profesor)"
+
+Planificacion ||--o| SesionChatbot : "1:1 sesión pedagógica IA"
+SesionChatbot ||--o{ PreguntaReflexionChatbot : "1:N preguntas de reflexión"
+
+PautaEvaluacion ||--|{ CriterioEvaluacion : "1:N contiene criterios"
+AsignacionPractica ||--o{ EvaluacionPractica : "1:N observaciones de clase"
+PautaEvaluacion ||--o{ EvaluacionPractica : "1:N estructura rúbrica"
+Usuario ||--o{ EvaluacionPractica : "1:N evalúa (Profesor/Tutor)"
+
+EvaluacionPractica ||--|{ DetalleEvaluacion : "1:N puntajes por criterio"
+CriterioEvaluacion ||--o{ DetalleEvaluacion : "1:N calificado en"
+
+@enduml

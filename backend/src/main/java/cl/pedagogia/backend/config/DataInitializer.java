@@ -1,10 +1,8 @@
 package cl.pedagogia.backend.config;
 
 import cl.pedagogia.backend.model.Asignatura;
-import cl.pedagogia.backend.model.Estudiante;
 import cl.pedagogia.backend.model.Usuario;
 import cl.pedagogia.backend.repository.AsignaturaRepository;
-import cl.pedagogia.backend.repository.EstudianteRepository;
 import cl.pedagogia.backend.repository.UsuarioRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +18,6 @@ import java.util.List;
 public class DataInitializer implements CommandLineRunner {
 
     private final UsuarioRepository usuarioRepository;
-    private final EstudianteRepository estudianteRepository;
     private final AsignaturaRepository asignaturaRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -28,24 +25,7 @@ public class DataInitializer implements CommandLineRunner {
     public void run(String... args) {
         log.info("Inicializando datos por defecto en la base de datos...");
 
-        // 1. Usuarios del sistema
-        Usuario admin = usuarioRepository.findByEmail("admin@pedagogia.cl")
-                .orElseGet(() -> {
-                    log.info("Creando usuario administrador: admin@pedagogia.cl");
-                    return usuarioRepository.save(Usuario.builder()
-                            .nombre("Admin")
-                            .apellido("Sistema")
-                            .email("admin@pedagogia.cl")
-                            .password(passwordEncoder.encode("password"))
-                            .rol(Usuario.Rol.ADMIN)
-                            .activo(true)
-                            .build());
-                });
-
-        // Asegurar que la contraseña de admin sea 'password'
-        admin.setPassword(passwordEncoder.encode("password"));
-        usuarioRepository.save(admin);
-
+        // 1. Profesor Tutor
         Usuario profesor = usuarioRepository.findByEmail("profesor@pedagogia.cl")
                 .orElseGet(() -> {
                     log.info("Creando usuario profesor: profesor@pedagogia.cl");
@@ -58,44 +38,62 @@ public class DataInitializer implements CommandLineRunner {
                             .activo(true)
                             .build());
                 });
+        // Garantizar password actualizada
+        profesor.setPassword(passwordEncoder.encode("password"));
+        usuarioRepository.save(profesor);
 
-        Usuario coordinador = usuarioRepository.findByEmail("coordinador@pedagogia.cl")
+        // 2. Estudiantes en practica
+        Usuario est1 = usuarioRepository.findByEmail("estudiante@pedagogia.cl")
                 .orElseGet(() -> {
-                    log.info("Creando usuario coordinador: coordinador@pedagogia.cl");
+                    log.info("Creando estudiante principal: estudiante@pedagogia.cl");
                     return usuarioRepository.save(Usuario.builder()
-                            .nombre("Rodrigo")
-                            .apellido("Bustos")
-                            .email("coordinador@pedagogia.cl")
+                            .nombre("Matias")
+                            .apellido("Silva Morales")
+                            .email("estudiante@pedagogia.cl")
                             .password(passwordEncoder.encode("password"))
-                            .rol(Usuario.Rol.DIRECTIVO)
+                            .rol(Usuario.Rol.ESTUDIANTE)
                             .activo(true)
                             .build());
                 });
+        est1.setPassword(passwordEncoder.encode("password"));
+        usuarioRepository.save(est1);
 
-        // 2. Asignaturas de la línea de práctica (6 asignaturas)
+        usuarioRepository.findByEmail("camila@pedagogia.cl")
+                .orElseGet(() -> usuarioRepository.save(Usuario.builder()
+                        .nombre("Camila")
+                        .apellido("Torres Perez")
+                        .email("camila@pedagogia.cl")
+                        .password(passwordEncoder.encode("password"))
+                        .rol(Usuario.Rol.ESTUDIANTE)
+                        .activo(true)
+                        .build()));
+
+        usuarioRepository.findByEmail("ignacio@pedagogia.cl")
+                .orElseGet(() -> usuarioRepository.save(Usuario.builder()
+                        .nombre("Ignacio")
+                        .apellido("Valenzuela Castro")
+                        .email("ignacio@pedagogia.cl")
+                        .password(passwordEncoder.encode("password"))
+                        .rol(Usuario.Rol.ESTUDIANTE)
+                        .activo(true)
+                        .build()));
+
+        // 3. Asignaturas de la linea de practica (6 asignaturas - 3 ciclos)
         if (asignaturaRepository.count() == 0) {
-            log.info("Creando las 6 asignaturas de la línea de práctica...");
+            log.info("Creando las 6 asignaturas de la linea de practica...");
             asignaturaRepository.saveAll(List.of(
-                    Asignatura.builder().codigo("PRA-101").nombre("Aproximación al Sistema Escolar").semestre(1).anio(2026).profesor(profesor).activo(true).build(),
-                    Asignatura.builder().codigo("PRA-201").nombre("Ambientes de Aprendizaje").semestre(2).anio(2026).profesor(profesor).activo(true).build(),
-                    Asignatura.builder().codigo("PRA-301").nombre("Trabajo Colaborativo en el Aula").semestre(1).anio(2026).profesor(profesor).activo(true).build(),
-                    Asignatura.builder().codigo("PRA-401").nombre("Investigación en el Aula").semestre(2).anio(2026).profesor(profesor).activo(true).build(),
-                    Asignatura.builder().codigo("PRA-501").nombre("Práctica Pedagógica").semestre(1).anio(2026).profesor(profesor).activo(true).build(),
-                    Asignatura.builder().codigo("PRA-601").nombre("Práctica Profesional").semestre(2).anio(2026).profesor(coordinador).activo(true).build()
+                // Ciclo Inicial
+                Asignatura.builder().codigo("PRA-101").nombre("Aproximacion al Sistema Escolar").semestre(1).anio(2026).profesor(profesor).activo(true).build(),
+                Asignatura.builder().codigo("PRA-201").nombre("Ambientes de Aprendizaje").semestre(2).anio(2026).profesor(profesor).activo(true).build(),
+                // Ciclo Intermedio
+                Asignatura.builder().codigo("PRA-301").nombre("Trabajo Colaborativo en el Aula").semestre(1).anio(2026).profesor(profesor).activo(true).build(),
+                Asignatura.builder().codigo("PRA-401").nombre("Investigacion en el Aula").semestre(2).anio(2026).profesor(profesor).activo(true).build(),
+                // Ciclo Final
+                Asignatura.builder().codigo("PRA-501").nombre("Practica Pedagogica").semestre(1).anio(2026).profesor(profesor).activo(true).build(),
+                Asignatura.builder().codigo("PRA-601").nombre("Practica Profesional").semestre(2).anio(2026).profesor(profesor).activo(true).build()
             ));
         }
 
-        // 3. Estudiantes de prueba
-        if (estudianteRepository.count() == 0) {
-            log.info("Creando estudiantes de prueba...");
-            estudianteRepository.saveAll(List.of(
-                    Estudiante.builder().rut("20.123.456-7").nombre("Matías").apellido("Silva Morales").email("matias.silva@alumnos.cl").activo(true).build(),
-                    Estudiante.builder().rut("20.234.567-8").nombre("Camila").apellido("Torres Pérez").email("camila.torres@alumnos.cl").activo(true).build(),
-                    Estudiante.builder().rut("20.345.678-9").nombre("Ignacio").apellido("Valenzuela Castro").email("ignacio.valenzuela@alumnos.cl").activo(true).build(),
-                    Estudiante.builder().rut("20.456.789-0").nombre("Valentina").apellido("Rojas González").email("valentina.rojas@alumnos.cl").activo(true).build()
-            ));
-        }
-
-        log.info("✅ Datos iniciales cargados exitosamente. Usuario listo: admin@pedagogia.cl / password");
+        log.info("Datos cargados. Profesor: profesor@pedagogia.cl / Estudiante: estudiante@pedagogia.cl / password: password");
     }
 }
